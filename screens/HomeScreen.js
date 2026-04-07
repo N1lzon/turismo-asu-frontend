@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, FlatList, Image,
   TouchableOpacity, StyleSheet, ActivityIndicator,
-  Linking, Platform,
+  Linking, Platform, useWindowDimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,7 @@ const ASUNCION = { lat: -25.2867, lng: -57.647 };
 const CATEGORIES = [
   { label: 'Gastronomía', key: 'restaurant', icon: 'restaurant-outline' },
   { label: 'Lugares',     key: 'museum',     icon: 'location-outline'   },
-  { label: 'Eventos',     key: 'events',     icon: 'calendar-outline'   },
+  { label: 'Rutas',       key: 'routes',     icon: 'map-outline'        },
   { label: 'Hospedaje',   key: 'hotel',      icon: 'business-outline'   },
 ];
 
@@ -119,6 +119,7 @@ function EventCard({ item }) {
 }
 
 export default function HomeScreen() {
+  const { width: screenWidth } = useWindowDimensions();
   const [activeCategory, setActiveCategory] = useState('restaurant');
   const [location, setLocation] = useState(ASUNCION);
   const [items, setItems] = useState([]);
@@ -206,7 +207,7 @@ export default function HomeScreen() {
         {CATEGORIES.map((cat) => {
           const active = activeCategory === cat.key;
           return (
-            <TouchableOpacity key={cat.key} style={styles.tab} onPress={() => selectCategory(cat.key)}>
+            <TouchableOpacity key={cat.key} style={[styles.tab, { width: screenWidth / CATEGORIES.length }]} onPress={() => selectCategory(cat.key)}>
               <Ionicons name={cat.icon} size={22} color={active ? '#E8611A' : '#888'} />
               <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{cat.label}</Text>
               {active && <View style={styles.tabUnderline} />}
@@ -268,7 +269,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   tab: {
-    flex: 1,
     alignItems: 'center',
     paddingVertical: 10,
     position: 'relative',
@@ -277,6 +277,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#888',
     marginTop: 3,
+    alignSelf: 'stretch',
+    textAlign: 'center',
   },
   tabLabelActive: {
     color: '#E8611A',
