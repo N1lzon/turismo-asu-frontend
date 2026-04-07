@@ -60,12 +60,12 @@ function openMaps(item) {
   Linking.openURL(url);
 }
 
-function PlaceCard({ item }) {
+function PlaceCard({ item, onPress }) {
   const open = isOpen(item);
   const todayHours = getTodayHours(item);
   const photo = getPhoto(item);
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       {photo
         ? <Image source={{ uri: photo }} style={styles.cardImage} />
         : <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
@@ -90,7 +90,7 @@ function PlaceCard({ item }) {
           <Ionicons name="location" size={13} color="#fff" />
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -118,13 +118,12 @@ function EventCard({ item }) {
   );
 }
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const { width: screenWidth } = useWindowDimensions();
   const [activeCategory, setActiveCategory] = useState('restaurant');
   const [location, setLocation] = useState(ASUNCION);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -161,46 +160,17 @@ export default function HomeScreen() {
     }
   }, [activeCategory, location]);
 
-  useEffect(() => {
-    if (!search) fetchItems();
-  }, [fetchItems, search]);
+  useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  const handleSearchSubmit = async () => {
-    if (!search.trim()) return fetchItems();
-    setLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/places/search?q=${encodeURIComponent(search.trim())}`);
-      setItems(await res.json());
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const selectCategory = (key) => {
-    setSearch('');
-    setActiveCategory(key);
-  };
+  const selectCategory = (key) => setActiveCategory(key);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Barra de búsqueda */}
-      <View style={styles.searchRow}>
-        <Ionicons name="menu" size={22} color="#666" style={{ marginRight: 8 }} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar"
-          placeholderTextColor="#aaa"
-          value={search}
-          onChangeText={setSearch}
-          onSubmitEditing={handleSearchSubmit}
-          returnKeyType="search"
-        />
-        <TouchableOpacity onPress={handleSearchSubmit}>
-          <Ionicons name="search" size={18} color="#666" />
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.searchRow} onPress={() => navigation.navigate('Search')} activeOpacity={0.7}>
+        <Ionicons name="search" size={18} color="#aaa" style={{ marginRight: 8 }} />
+        <Text style={styles.searchPlaceholder}>Buscar lugares...</Text>
+      </TouchableOpacity>
 
       {/* Pestañas de categoría */}
       <View style={styles.tabs}>
@@ -226,7 +196,7 @@ export default function HomeScreen() {
             renderItem={({ item }) =>
               activeCategory === 'events'
                 ? <EventCard item={item} />
-                : <PlaceCard item={item} />
+                : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} />
             }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
@@ -258,10 +228,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 44,
   },
-  searchInput: {
+  searchPlaceholder: {
     flex: 1,
     fontSize: 15,
-    color: '#333',
+    color: '#aaa',
   },
   tabs: {
     flexDirection: 'row',
