@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, FlatList, Image,
   TouchableOpacity, StyleSheet, ActivityIndicator,
-  Linking, Platform, useWindowDimensions,
+  useWindowDimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,8 +14,8 @@ const ASUNCION = { lat: -25.2867, lng: -57.647 };
 const CATEGORIES = [
   { label: 'Gastronomía', key: 'restaurant', icon: 'restaurant-outline' },
   { label: 'Lugares',     key: 'museum',     icon: 'location-outline'   },
-  { label: 'Rutas',       key: 'routes',     icon: 'map-outline'        },
   { label: 'Hospedaje',   key: 'hotel',      icon: 'business-outline'   },
+  { label: 'Rutas',       key: 'routes',     icon: 'map-outline'        },
 ];
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -45,22 +45,90 @@ function formatDistance(meters) {
     : `A ${(meters / 1000).toFixed(1)}km.`;
 }
 
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function getPhoto(item) {
   if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
   if (typeof item.photo === 'string') return item.photo;
   return null;
 }
 
-function openMaps(item) {
-  const label = encodeURIComponent(item.name);
-  const url = Platform.select({
-    ios:     `maps:?q=${label}&ll=${item.lat},${item.lng}`,
-    android: `geo:${item.lat},${item.lng}?q=${item.lat},${item.lng}(${label})`,
-  });
-  Linking.openURL(url);
+
+function CollageImage({ photos }) {
+  const imgs = photos.slice(0, 3);
+  if (imgs.length === 0) {
+    return <View style={[styles.cardImage, styles.cardImagePlaceholder]} />;
+  }
+  if (imgs.length === 1) {
+    return <Image source={{ uri: imgs[0] }} style={styles.cardImage} />;
+  }
+  if (imgs.length === 2) {
+    return (
+      <View style={[styles.cardImage, { flexDirection: 'row', gap: 2, overflow: 'hidden', borderRadius: 14 }]}>
+        <Image source={{ uri: imgs[0] }} style={{ flex: 1, height: '100%' }} />
+        <Image source={{ uri: imgs[1] }} style={{ flex: 1, height: '100%' }} />
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.cardImage, { flexDirection: 'row', gap: 2, overflow: 'hidden', borderRadius: 14 }]}>
+      <Image source={{ uri: imgs[0] }} style={{ flex: 1, height: '100%' }} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Image source={{ uri: imgs[1] }} style={{ flex: 1, width: '100%' }} />
+        <Image source={{ uri: imgs[2] }} style={{ flex: 1, width: '100%' }} />
+      </View>
+    </View>
+  );
 }
 
-function PlaceCard({ item, onPress }) {
+function RouteCard({ item, navigation }) {
+  const photos = (item.places ?? [])
+    .slice(0, 3)
+    .map((p) => p.photos?.[0])
+    .filter(Boolean);
+  const startTime = item.start_time ? item.start_time.slice(0, 5) + ' hs.' : null;
+  const distanceText = item.distance_meters != null ? formatDistance(item.distance_meters) : null;
+
+  return (
+    <View style={styles.card}>
+      <CollageImage photos={photos} />
+      <View style={styles.cardBody}>
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardTitle}>{item.name}</Text>
+          {startTime && (
+            <Text style={[styles.cardStatus, { color: '#E8611A' }]}>
+              Inicia a las {startTime}
+            </Text>
+          )}
+          {distanceText && (
+            <Text style={styles.cardMeta}>{distanceText} al punto de inicio</Text>
+          )}
+          {item.total_places != null && (
+            <Text style={styles.cardMeta}>{item.total_places} lugares</Text>
+          )}
+        </View>
+        <TouchableOpacity
+          style={styles.dirBtn}
+          onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
+        >
+          <Text style={styles.dirBtnText}>Ver en mapa</Text>
+          <Ionicons name="map" size={13} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function PlaceCard({ item, onPress, navigation }) {
   const open = isOpen(item);
   const todayHours = getTodayHours(item);
   const photo = getPhoto(item);
@@ -85,7 +153,10 @@ function PlaceCard({ item, onPress }) {
             <Text style={styles.cardMeta}>{formatDistance(item.distance_meters)}</Text>
           )}
         </View>
-        <TouchableOpacity style={styles.dirBtn} onPress={() => openMaps(item)}>
+        <TouchableOpacity
+          style={styles.dirBtn}
+          onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { destination: item } })}
+        >
           <Text style={styles.dirBtnText}>Como llegar</Text>
           <Ionicons name="location" size={13} color="#fff" />
         </TouchableOpacity>
@@ -140,16 +211,34 @@ export default function HomeScreen({ navigation }) {
     setLoading(true);
     setError(null);
     try {
-      const url = activeCategory === 'events'
-        ? `${BASE_URL}/events`
-        : `${BASE_URL}/places/nearby?lat=${location.lat}&lng=${location.lng}&radius=50000&category=${activeCategory}`;
-      const res = await fetch(url);
-      const text = await res.text();
       let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(text.slice(0, 120));
+      if (activeCategory === 'routes') {
+        const res = await fetch(`${BASE_URL}/routes/presets`);
+        const presets = await res.json();
+        const detailed = await Promise.all(
+          presets.map((r) =>
+            fetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json())
+          )
+        );
+        data = detailed.map((route) => {
+          const firstPlace = route.places?.[0];
+          const distance_meters =
+            firstPlace?.lat != null
+              ? haversineMeters(location.lat, location.lng, firstPlace.lat, firstPlace.lng)
+              : null;
+          return { ...route, distance_meters };
+        });
+      } else {
+        const url = activeCategory === 'events'
+          ? `${BASE_URL}/events`
+          : `${BASE_URL}/places/nearby?lat=${location.lat}&lng=${location.lng}&radius=50000&category=${activeCategory}`;
+        const res = await fetch(url);
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(text.slice(0, 120));
+        }
       }
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -196,7 +285,9 @@ export default function HomeScreen({ navigation }) {
             renderItem={({ item }) =>
               activeCategory === 'events'
                 ? <EventCard item={item} />
-                : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} />
+                : activeCategory === 'routes'
+                  ? <RouteCard item={item} navigation={navigation} />
+                  : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} navigation={navigation} />
             }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}

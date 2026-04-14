@@ -1,6 +1,6 @@
 import {
   View, Text, Image, TouchableOpacity,
-  StyleSheet, Platform, Linking,
+  StyleSheet,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,14 +39,6 @@ function getPhoto(item) {
   return null;
 }
 
-function openMaps(place) {
-  const label = encodeURIComponent(place.name);
-  const url = Platform.select({
-    ios:     `maps:?q=${label}&ll=${place.lat},${place.lng}`,
-    android: `geo:${place.lat},${place.lng}?q=${place.lat},${place.lng}(${label})`,
-  });
-  Linking.openURL(url);
-}
 
 export default function PlaceDetailScreen({ route, navigation }) {
   const { place } = route.params;
@@ -93,7 +85,10 @@ export default function PlaceDetailScreen({ route, navigation }) {
         )}
 
         {hasMap && (
-          <TouchableOpacity style={styles.dirBtn} onPress={() => openMaps(place)}>
+          <TouchableOpacity
+            style={styles.dirBtn}
+            onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { destination: place } })}
+          >
             <Text style={styles.dirBtnText}>Como llegar</Text>
             <Ionicons name="location" size={13} color="#fff" />
           </TouchableOpacity>

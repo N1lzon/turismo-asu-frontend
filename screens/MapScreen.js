@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ActivityIndicator,
+  View, Text, TouchableOpacity,
+  StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { BASE_URL } from '../config';
 
 const ASUNCION = {
@@ -16,13 +17,16 @@ const ASUNCION = {
   longitudeDelta: 0.05,
 };
 
-export default function MapScreen() {
+const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
+
+export default function MapScreen({ route, navigation }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(ASUNCION);
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [selectedPlace, setSelectedPlace] = useState(null);
+  const [routePolyline, setRoutePolyline] = useState([]);
+  const [routePlaces, setRoutePlaces] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -44,6 +48,126 @@ export default function MapScreen() {
     })();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      // Ruta completa desde la pestaña Rutas
+      const routeData = route?.params?.routeData;
+      if (routeData?.places?.length > 0) {
+        setRoutePlaces(routeData.places);
+        setPlaces([]);
+        loadRouteOnMap(routeData.places);
+      }
+
+      // Ruta desde posición actual hacia un destino (búsqueda del mapa)
+      const destination = route?.params?.destination;
+      if (destination?.lat != null) {
+        navigation.setParams({ destination: null });
+        routeToDestination(destination);
+      }
+    }, [route?.params?.routeData, route?.params?.destination])
+  );
+
+  const routeToDestination = async (dest) => {
+    setLoading(true);
+    setPlaces([]);
+    setRoutePolyline([]);
+    setRoutePlaces([dest]);
+
+    // Obtener posición actual, o usar centro de Asunción como fallback
+    let originLat = ASUNCION.latitude;
+    let originLng = ASUNCION.longitude;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        originLat = loc.coords.latitude;
+        originLng = loc.coords.longitude;
+      }
+    } catch { /* usa fallback */ }
+
+    const origin = { lat: originLat, lng: originLng };
+    const pts = [origin, { lat: dest.lat, lng: dest.lng }];
+    const coordStr = pts.map((p) => `${p.lng},${p.lat}`).join(';');
+
+    try {
+      const res = await fetch(
+        `${OSRM_BASE}/${coordStr}?overview=full&geometries=geojson`
+      );
+      const data = await res.json();
+      if (data.routes?.[0]?.geometry?.coordinates) {
+        setRoutePolyline(
+          data.routes[0].geometry.coordinates.map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }))
+        );
+      }
+    } catch {
+      setRoutePolyline(pts.map((p) => ({ latitude: p.lat, longitude: p.lng })));
+    } finally {
+      setLoading(false);
+    }
+
+    setTimeout(() => {
+      mapRef.current?.fitToCoordinates(
+        pts.map((p) => ({ latitude: p.lat, longitude: p.lng })),
+        { edgePadding: { top: 80, right: 50, bottom: 120, left: 50 }, animated: true }
+      );
+    }, 300);
+  };
+
+  const loadRouteOnMap = async (pts) => {
+    const validPts = pts.filter((p) => p.lat != null && p.lng != null);
+    if (validPts.length < 2) return;
+
+    // Trazar ruta por calles usando OSRM
+    const coordStr = validPts.map((p) => `${p.lng},${p.lat}`).join(';');
+    try {
+      const res = await fetch(
+        `${OSRM_BASE}/${coordStr}?overview=full&geometries=geojson`
+      );
+      const data = await res.json();
+      if (data.routes?.[0]?.geometry?.coordinates) {
+        setRoutePolyline(
+          data.routes[0].geometry.coordinates.map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }))
+        );
+      }
+    } catch {
+      // Fallback: líneas rectas entre puntos
+      setRoutePolyline(validPts.map((p) => ({ latitude: p.lat, longitude: p.lng })));
+    }
+
+    // Ajustar cámara para mostrar toda la ruta
+    setTimeout(() => {
+      mapRef.current?.fitToCoordinates(
+        validPts.map((p) => ({ latitude: p.lat, longitude: p.lng })),
+        { edgePadding: { top: 80, right: 50, bottom: 120, left: 50 }, animated: true }
+      );
+    }, 300);
+  };
+
+  const clearRoute = () => {
+    setRoutePolyline([]);
+    setRoutePlaces([]);
+    navigation.setParams({ routeData: null });
+  };
+
+  const openInExternalApp = () => {
+    if (routePlaces.length > 1) {
+      // Ruta multi-punto: URL de Google Maps con todas las paradas en orden
+      const stops = routePlaces.map((p) => `${p.lat},${p.lng}`).join('/');
+      Linking.openURL(`https://www.google.com/maps/dir/${stops}`);
+    } else {
+      // Destino único: geo: URI — Android muestra el selector si no hay app predeterminada
+      const dest = routePlaces[0];
+      const label = encodeURIComponent(dest.name ?? '');
+      Linking.openURL(`geo:${dest.lat},${dest.lng}?q=${dest.lat},${dest.lng}(${label})`);
+    }
+  };
+
   const fetchNearby = async (lat, lng) => {
     setLoading(true);
     try {
@@ -53,34 +177,6 @@ export default function MapScreen() {
       const text = await res.text();
       const data = JSON.parse(text);
       setPlaces(Array.isArray(data) ? data : []);
-    } catch {
-      setPlaces([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = async () => {
-    const q = search.trim();
-    if (!q) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/places/search?q=${encodeURIComponent(q)}`);
-      const text = await res.text();
-      const data = JSON.parse(text);
-      const results = Array.isArray(data) ? data : [];
-      setPlaces(results);
-      if (results.length > 0) {
-        const first = results[0];
-        const newRegion = {
-          latitude: first.lat,
-          longitude: first.lng,
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.03,
-        };
-        setRegion(newRegion);
-        mapRef.current?.animateToRegion(newRegion, 600);
-      }
     } catch {
       setPlaces([]);
     } finally {
@@ -121,6 +217,7 @@ export default function MapScreen() {
         showsUserLocation
         showsMyLocationButton={false}
       >
+        {/* Marcadores de lugares normales */}
         {places.map((place) => (
           <Marker
             key={place.id}
@@ -131,25 +228,41 @@ export default function MapScreen() {
             onPress={() => focusPlace(place)}
           />
         ))}
+
+        {/* Polilínea de la ruta por calles */}
+        {routePolyline.length > 0 && (
+          <Polyline
+            coordinates={routePolyline}
+            strokeColor="#E8611A"
+            strokeWidth={4}
+          />
+        )}
+
+        {/* Marcadores numerados de los puntos de la ruta */}
+        {routePlaces.map((place, index) => (
+          <Marker
+            key={`rp-${place.id}`}
+            coordinate={{ latitude: place.lat, longitude: place.lng }}
+            title={`${index + 1}. ${place.name}`}
+            description={place.address}
+          >
+            <View style={styles.routeMarker}>
+              <Text style={styles.routeMarkerText}>{index + 1}</Text>
+            </View>
+          </Marker>
+        ))}
       </MapView>
 
       {/* Barra de búsqueda flotante */}
-      <SafeAreaView edges={['top']} style={styles.searchWrapper}>
-        <View style={styles.searchRow}>
-          <Ionicons name="menu" size={22} color="#666" style={{ marginRight: 8 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar"
-            placeholderTextColor="#aaa"
-            value={search}
-            onChangeText={setSearch}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-          />
-          <TouchableOpacity onPress={handleSearch}>
-            <Ionicons name="search" size={18} color="#666" />
-          </TouchableOpacity>
-        </View>
+      <SafeAreaView edges={['top']} style={styles.searchWrapper} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.searchRow}
+          onPress={() => navigation.navigate('MapSearch')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="search" size={18} color="#aaa" style={{ marginRight: 8 }} />
+          <Text style={styles.searchPlaceholder}>Buscar lugares...</Text>
+        </TouchableOpacity>
       </SafeAreaView>
 
       {/* Indicador de carga */}
@@ -159,15 +272,41 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Botones inferiores derecha */}
-      <View style={styles.newRouteWrapper}>
-        <TouchableOpacity style={styles.locateBtn} onPress={centerOnUser}>
-          <Ionicons name="locate" size={20} color="#E8611A" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.newRouteBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.newRouteBtnText}>Nueva ruta</Text>
-        </TouchableOpacity>
+      {/* Botones inferiores */}
+      <View style={styles.bottomRow}>
+        {/* Botones izquierdos (solo cuando hay ruta activa) */}
+        {routePlaces.length > 0 && (
+          <View style={styles.leftBtns}>
+            <TouchableOpacity style={styles.openInBtn} onPress={openInExternalApp}>
+              <Ionicons name="open-outline" size={15} color="#fff" />
+              <Text style={styles.openInBtnText}>Abrir en…</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.clearRouteBtn} onPress={clearRoute}>
+              <Ionicons name="close" size={15} color="#fff" />
+              <Text style={styles.clearRouteBtnText}>Limpiar ruta</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Derecha: localizar + nueva ruta / editar */}
+        <View style={styles.rightBtns}>
+          <TouchableOpacity style={styles.locateBtn} onPress={centerOnUser}>
+            <Ionicons name="locate" size={20} color="#E8611A" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.newRouteBtn}>
+            {routePlaces.length > 0 ? (
+              <>
+                <Ionicons name="pencil" size={16} color="#fff" />
+                <Text style={styles.newRouteBtnText}>Editar</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={styles.newRouteBtnText}>Nueva ruta</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -198,10 +337,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  searchInput: {
+  searchPlaceholder: {
     flex: 1,
     fontSize: 15,
-    color: '#333',
+    color: '#aaa',
   },
   loadingOverlay: {
     position: 'absolute',
@@ -212,12 +351,81 @@ const styles = StyleSheet.create({
     padding: 8,
     elevation: 4,
   },
-  newRouteWrapper: {
+  routeMarker: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#E8611A',
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  routeMarkerText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  leftBtns: {
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  openInBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#444',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  openInBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  bottomRow: {
     position: 'absolute',
     bottom: 24,
+    left: 20,
     right: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  rightBtns: {
     alignItems: 'flex-end',
     gap: 10,
+    marginLeft: 'auto',
+  },
+  clearRouteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#555',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  clearRouteBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
   },
   locateBtn: {
     width: 44,
