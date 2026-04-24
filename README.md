@@ -14,58 +14,59 @@ App móvil de turismo para Asunción, Paraguay. Permite explorar lugares turíst
 
 | Pantalla | Descripción |
 |---|---|
-| `HomeScreen` | Lista de lugares con buscador |
-| `MapScreen` | Mapa con marcadores de lugares y eventos |
-| `PlaceDetailScreen` | Detalle de un lugar turístico |
-| `SearchScreen` | Búsqueda avanzada |
-| `OptionsScreen` | Opciones y rutas del usuario |
+| `HomeScreen` | Lista de lugares cercanos con buscador y filtro por categoría |
+| `MapScreen` | Mapa con marcadores de lugares y eventos, y navegación integrada |
+| `PlaceDetailScreen` | Detalle de un lugar turístico (fotos, horarios, contacto) |
+| `OptionsScreen` | Rutas predeterminadas y rutas del usuario (guardadas localmente) |
 
 ## Backend
 
 El frontend consume una API REST hecha con FastAPI. Repositorio: `turismo-asu-backend`.
 
 Endpoints principales:
-- `GET /places/nearby?lat=&lng=&radius=2000&category=`
-- `GET /places/search?q=`
-- `GET /places/{id}`
-- `GET /routes/presets`
-- `GET /events`
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/places/nearby?lat=&lng=&radius=&category=` | Lugares cercanos ordenados por distancia |
+| `GET` | `/places/search?q=` | Búsqueda por nombre |
+| `GET` | `/places/{id}` | Detalle de un lugar |
+| `GET` | `/routes/presets` | Lista de rutas predeterminadas |
+| `GET` | `/routes/presets/{id}` | Detalle de una ruta con sus lugares en orden |
+| `GET` | `/events` | Todos los eventos |
+| `GET` | `/events/{id}` | Detalle de un evento |
+| `POST` | `/events` | Crear un evento |
+| `DELETE` | `/events/{id}` | Eliminar un evento |
+
+Documentación interactiva disponible en `http://localhost:8000/docs` cuando el backend está corriendo.
 
 ## Requisitos
 
-- Node.js
-- Expo CLI (`npm install -g expo-cli`)
+- Node.js 18+
 - App **Expo Go** instalada en el celular
-- `localtunnel` para exponer el backend (`npm install -g localtunnel`)
 
 ## Configuración
 
 En `config.js`, ajustar la URL base del backend:
 
 ```js
-// Con túnel (recomendado para dispositivo físico):
-export const BASE_URL = 'https://<tu-subdominio>.loca.lt';
+// Con túnel (recomendado — funciona sin importar la red):
+export const BASE_URL = 'https://<subdominio>.loca.lt';
 
-// Con IP local (celular y PC en la misma red):
+// Con IP local (celular y PC en la misma red Wi-Fi):
 export const BASE_URL = 'http://192.168.x.x:8000';
 ```
 
 ## Instalación y ejecución
 
-### 1. Clonar el repositorio
+### 1. Clonar e instalar dependencias
 
 ```bash
 git clone <url-del-repo>
 cd turismo-asu-frontend
-```
-
-### 2. Instalar dependencias
-
-```bash
 npm install
 ```
 
-### 3. Levantar el backend con túnel
+### 2. Levantar el backend
 
 En el directorio del backend:
 
@@ -73,18 +74,30 @@ En el directorio del backend:
 uvicorn app.main:app --reload
 ```
 
-En otra terminal:
+### 3. Crear el túnel (opcional, recomendado para dispositivo físico)
 
 ```bash
-npx localtunnel --port 8000 --subdomain cyan-points-watch
+npx localtunnel --port 8000
 ```
 
-### 4. Iniciar el frontend
+Copiar la URL que imprime y pegarla en `config.js`.
+
+> El túnel es efímero — la URL cambia cada vez que se reinicia. Actualizar `config.js` cada vez que cambie.
+
+### 4. Iniciar Expo
 
 ```bash
-npx expo start --tunnel
+npx expo start
 ```
 
 Escanear el QR con la app **Expo Go** desde el celular.
 
-> El celular y la PC deben estar en la misma red WiFi si se usa IP local en lugar de túnel.
+## Errores comunes
+
+| Error | Causa | Solución |
+|-------|-------|----------|
+| `Network request failed` | URL incorrecta en `config.js` o backend caído | Verificar URL y que el backend responda en `http://localhost:8000` |
+| Lista de lugares vacía | Túnel expiró o cambió | Recrear túnel y actualizar `config.js` |
+| Mapa en blanco | Problema con `react-native-maps` en emulador | Usar dispositivo físico o habilitar GPU en el emulador |
+| `Unable to resolve module` | `node_modules` incompleto | Borrar `node_modules` y correr `npm install` de nuevo |
+| QR no escaneable desde otra red | Expo server no accesible | Usar `npx expo start --tunnel` |
