@@ -10,6 +10,24 @@ App móvil de turismo para Asunción, Paraguay. Permite explorar lugares turíst
 - `react-native-maps` — mapa interactivo
 - `@react-native-async-storage/async-storage` — rutas guardadas localmente
 
+## Estructura del proyecto
+
+```
+turismo-asu-frontend/
+├── App.js                    # Navegación principal (bottom tabs + stack)
+├── index.js                  # Entry point de Expo
+├── config.js                 # BASE_URL del backend (no commiteado)
+├── app.json                  # Configuración de Expo
+├── assets/                   # Íconos y splash screen
+└── screens/
+    ├── HomeScreen.js         # Lista de lugares con buscador y categorías
+    ├── MapScreen.js          # Mapa con marcadores de lugares y eventos
+    ├── MapSearchScreen.js    # Búsqueda de lugares desde el mapa
+    ├── PlaceDetailScreen.js  # Detalle de un lugar turístico
+    ├── SearchScreen.js       # Búsqueda avanzada
+    └── OptionsScreen.js      # Rutas predeterminadas y rutas del usuario
+```
+
 ## Pantallas
 
 | Pantalla | Descripción |
@@ -92,30 +110,5 @@ npx expo start
 
 Escanear el QR con la app **Expo Go** desde el celular.
 
-## Estructura del proyecto
 
 ```
-turismo-asu-frontend/
-├── App.js                    # Navegación principal (bottom tabs + stack)
-├── index.js                  # Entry point de Expo
-├── config.js                 # BASE_URL del backend (no commiteado)
-├── app.json                  # Configuración de Expo
-├── assets/                   # Íconos y splash screen
-└── screens/
-    ├── HomeScreen.js         # Lista de lugares con buscador y categorías
-    ├── MapScreen.js          # Mapa con marcadores de lugares y eventos
-    ├── MapSearchScreen.js    # Búsqueda de lugares desde el mapa
-    ├── PlaceDetailScreen.js  # Detalle de un lugar turístico
-    ├── SearchScreen.js       # Búsqueda avanzada
-    └── OptionsScreen.js      # Rutas predeterminadas y rutas del usuario
-```
-
-## Errores comunes
-
-| Error | Causa | Solución |
-|-------|-------|----------|
-| `Network request failed` | URL incorrecta en `config.js` o backend caído | Verificar URL y que el backend responda en `http://localhost:8000` |
-| Lista de lugares vacía | Túnel expiró o cambió | Recrear túnel y actualizar `config.js` |
-| Mapa en blanco | Problema con `react-native-maps` en emulador | Usar dispositivo físico o habilitar GPU en el emulador |
-| `Unable to resolve module` | `node_modules` incompleto | Borrar `node_modules` y correr `npm install` de nuevo |
-| QR no escaneable desde otra red | Expo server no accesible | Usar `npx expo start --tunnel` |
