@@ -92,6 +92,24 @@ npx expo start
 
 Escanear el QR con la app **Expo Go** desde el celular.
 
+## Estructura del proyecto
+
+```
+turismo-asu-frontend/
+├── App.js                    # Navegación principal (bottom tabs + stack)
+├── index.js                  # Entry point de Expo
+├── config.js                 # BASE_URL del backend (no commiteado)
+├── app.json                  # Configuración de Expo
+├── assets/                   # Íconos y splash screen
+└── screens/
+    ├── HomeScreen.js         # Lista de lugares con buscador y categorías
+    ├── MapScreen.js          # Mapa con marcadores de lugares y eventos
+    ├── MapSearchScreen.js    # Búsqueda de lugares desde el mapa
+    ├── PlaceDetailScreen.js  # Detalle de un lugar turístico
+    ├── SearchScreen.js       # Búsqueda avanzada
+    └── OptionsScreen.js      # Rutas predeterminadas y rutas del usuario
+```
+
 ## Errores comunes
 
 | Error | Causa | Solución |
