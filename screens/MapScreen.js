@@ -31,6 +31,7 @@ export default function MapScreen({ route, navigation }) {
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [routePolyline, setRoutePolyline] = useState([]);
   const [routePlaces, setRoutePlaces] = useState([]);
+  const [currentRouteData, setCurrentRouteData] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -57,6 +58,7 @@ export default function MapScreen({ route, navigation }) {
       const routeData = route?.params?.routeData;
       if (routeData?.places?.length > 0) {
         setRoutePlaces(routeData.places);
+        setCurrentRouteData(routeData);
         setPlaces([]);
         loadRouteOnMap(routeData.places);
       }
@@ -131,6 +133,7 @@ export default function MapScreen({ route, navigation }) {
   const clearRoute = () => {
     setRoutePolyline([]);
     setRoutePlaces([]);
+    setCurrentRouteData(null);
     navigation.setParams({ routeData: null });
   };
 
@@ -251,7 +254,12 @@ export default function MapScreen({ route, navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.newRouteBtn}
-            onPress={() => navigation.navigate('RouteEditor', { initialPlaces: routePlaces })}
+            onPress={() => navigation.navigate('RouteEditor', {
+              initialPlaces: routePlaces,
+              ...(currentRouteData && !currentRouteData.is_preset
+                ? { existingRouteId: currentRouteData.id, existingRouteName: currentRouteData.name }
+                : {}),
+            })}
           >
             {routePlaces.length > 0 ? (
               <>

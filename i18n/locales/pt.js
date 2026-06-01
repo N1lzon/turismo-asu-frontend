@@ -32,6 +32,15 @@ export default {
   // Editor de rota
   save: 'Salvar',
   route_empty: 'Pesquise e adicione lugares à sua rota',
+  routes_app: 'Do app',
+  routes_mine: 'Minhas rotas',
+  no_user_routes: 'Ainda não há rotas salvas.',
+  delete: 'Excluir',
+  delete_route_title: 'Excluir rota',
+  delete_route_confirm: 'Excluir esta rota? Esta ação não pode ser desfeita.',
+  my_route: 'Minha rota',
+  save_route_title: 'Salvar rota',
+  route_name_placeholder_input: 'Nome da rota',
 
   // Mapa
   open_in: 'Abrir em…',

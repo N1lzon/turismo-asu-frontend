@@ -32,6 +32,15 @@ export default {
   // Route editor
   save: 'Save',
   route_empty: 'Search and add places to your route',
+  routes_app: 'From app',
+  routes_mine: 'My routes',
+  no_user_routes: 'No saved routes yet.',
+  delete: 'Delete',
+  delete_route_title: 'Delete route',
+  delete_route_confirm: 'Delete this route? This action cannot be undone.',
+  my_route: 'My route',
+  save_route_title: 'Save route',
+  route_name_placeholder_input: 'Route name',
 
   // Map
   open_in: 'Open in…',

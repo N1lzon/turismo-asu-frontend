@@ -2,17 +2,18 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, FlatList, Image,
   TouchableOpacity, StyleSheet, ActivityIndicator,
-  Keyboard, PanResponder, ScrollView,
+  Keyboard, PanResponder, ScrollView, Modal, Pressable,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
-// Altura fija por ítem — debe coincidir con el estilo routeItem
 const ITEM_HEIGHT = 64;
+const USER_ROUTES_KEY = '@user_routes';
 
 function getPhoto(item) {
   if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
@@ -31,7 +32,6 @@ const deleteStyle = StyleSheet.create({
   bg: { width: 80, backgroundColor: '#E8344E', justifyContent: 'center', alignItems: 'center' },
 });
 
-// Handle de arrastre con su propio PanResponder estable
 function DragHandle({ itemId, indexRef, callbacks }) {
   const panResponder = useRef(
     PanResponder.create({
@@ -63,12 +63,10 @@ function DragHandle({ itemId, indexRef, callbacks }) {
 }
 const dragHandleStyle = StyleSheet.create({ wrap: { padding: 10 } });
 
-// Ítem de la ruta: swipeable (derecha = borrar) + drag handle
 function RouteItem({ item, displayIndex, isDragging, callbacks }) {
   const { colors } = useTheme();
   const swipeRef = useRef(null);
 
-  // indexRef siempre actualizado para que el PanResponder del handle use el índice correcto
   const indexRef = useRef(displayIndex);
   useEffect(() => { indexRef.current = displayIndex; }, [displayIndex]);
 
@@ -107,20 +105,23 @@ export default function RouteEditorScreen({ route, navigation }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
 
+  const existingRouteId   = route?.params?.existingRouteId   ?? null;
+  const existingRouteName = route?.params?.existingRouteName ?? '';
+
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [routePlaces, setRoutePlaces] = useState(route?.params?.initialPlaces ?? []);
   const [loading, setLoading] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dropIdx, setDropIdx] = useState(null);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [routeName, setRouteName] = useState(existingRouteName);
 
-  // Refs para que los callbacks del PanResponder siempre accedan al estado actual
   const routeRef = useRef(routePlaces);
   useEffect(() => { routeRef.current = routePlaces; }, [routePlaces]);
 
   const dragState = useRef({ id: null, fromIndex: null });
 
-  // Objeto de callbacks estable — el PanResponder lo captura una sola vez
   const callbacks = useRef({
     start: (itemId, fromIndex) => {
       dragState.current = { id: itemId, fromIndex };
@@ -154,7 +155,6 @@ export default function RouteEditorScreen({ route, navigation }) {
     },
   });
 
-  // Vista previa del orden mientras se arrastra
   function getDisplayItems() {
     if (draggingId === null || dropIdx === null) return routePlaces;
     const from = routePlaces.findIndex((p) => p.id === draggingId);
@@ -167,6 +167,7 @@ export default function RouteEditorScreen({ route, navigation }) {
 
   const displayItems = getDisplayItems();
   const isSearching = query.trim().length > 0;
+  const hasPlaces = routePlaces.length > 0;
 
   const handleSearch = async (text) => {
     setQuery(text);
@@ -191,7 +192,35 @@ export default function RouteEditorScreen({ route, navigation }) {
     Keyboard.dismiss();
   };
 
+  // Abre el modal para nombrar y guardar la ruta localmente
   const saveRoute = () => {
+    if (routePlaces.length === 0) return;
+    setRouteName(existingRouteName);
+    setSaveModalVisible(true);
+  };
+
+  const handleSave = async () => {
+    const name = routeName.trim() || t('my_route');
+    const routeToSave = {
+      id: existingRouteId ?? Date.now(),
+      name,
+      places: routePlaces,
+      created_at: new Date().toISOString(),
+    };
+    try {
+      const stored = await AsyncStorage.getItem(USER_ROUTES_KEY);
+      const existing = stored ? JSON.parse(stored) : [];
+      const updated = existingRouteId
+        ? existing.map((r) => r.id === existingRouteId ? routeToSave : r)
+        : [...existing, routeToSave];
+      await AsyncStorage.setItem(USER_ROUTES_KEY, JSON.stringify(updated));
+    } catch {}
+    setSaveModalVisible(false);
+    navigation.goBack();
+  };
+
+  // Muestra la ruta en el mapa sin guardarla
+  const viewOnMap = () => {
     if (routePlaces.length === 0) return;
     navigation.navigate('Map', {
       routeData: { id: Date.now(), name: t('new_route'), places: routePlaces, is_preset: false },
@@ -207,8 +236,8 @@ export default function RouteEditorScreen({ route, navigation }) {
           <Ionicons name="arrow-back" size={22} color={colors.backIcon} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>{t('new_route')}</Text>
-        <TouchableOpacity onPress={saveRoute} style={styles.headerBtnRight} disabled={routePlaces.length === 0}>
-          <Text numberOfLines={1} style={[styles.saveText, routePlaces.length === 0 && { opacity: 0.3 }]}>{t('save')}</Text>
+        <TouchableOpacity onPress={saveRoute} style={styles.headerBtnRight} disabled={!hasPlaces}>
+          <Text numberOfLines={1} style={[styles.saveText, !hasPlaces && { opacity: 0.3 }]}>{t('save')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -277,10 +306,13 @@ export default function RouteEditorScreen({ route, navigation }) {
             />
           )
       ) : (
-        /* Lista de la ruta arrastrable */
         <ScrollView
           scrollEnabled={!draggingId}
-          contentContainerStyle={displayItems.length === 0 ? styles.emptyContainer : { paddingBottom: 24 }}
+          contentContainerStyle={
+            displayItems.length === 0
+              ? styles.emptyContainer
+              : { paddingBottom: hasPlaces ? 80 : 24 }
+          }
         >
           {displayItems.length === 0 ? (
             <>
@@ -300,6 +332,51 @@ export default function RouteEditorScreen({ route, navigation }) {
           )}
         </ScrollView>
       )}
+
+      {/* Botón "Ver en mapa" fijo abajo */}
+      {hasPlaces && !isSearching && (
+        <View style={[styles.viewMapBar, { borderTopColor: colors.border, backgroundColor: colors.bg }]}>
+          <TouchableOpacity style={styles.viewMapBtn} onPress={viewOnMap}>
+            <Ionicons name="map-outline" size={18} color="#fff" />
+            <Text style={styles.viewMapBtnText}>{t('view_on_map')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Modal de guardado */}
+      <Modal
+        visible={saveModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSaveModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setSaveModalVisible(false)}>
+          <Pressable style={[styles.modalBox, { backgroundColor: colors.modalBg }]} onPress={() => {}}>
+            <Text style={[styles.modalTitle, { color: colors.text, borderBottomColor: colors.border }]}>
+              {t('save_route_title')}
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]}
+              placeholder={t('route_name_placeholder_input')}
+              placeholderTextColor={colors.placeholder}
+              value={routeName}
+              onChangeText={setRouteName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
+            />
+            <View style={[styles.modalBtns, { borderTopColor: colors.border }]}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setSaveModalVisible(false)}>
+                <Text style={[styles.modalCancelText, { color: colors.textMuted }]}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleSave}>
+                <Text style={styles.modalConfirmText}>{t('save')}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -330,7 +407,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 15 },
 
-  // Resultado de búsqueda
   resultItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -344,7 +420,6 @@ const styles = StyleSheet.create({
   resultName: { fontSize: 15, fontWeight: '500' },
   resultAddr: { fontSize: 12, marginTop: 2 },
 
-  // Ítem de ruta
   routeItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -358,7 +433,69 @@ const styles = StyleSheet.create({
   routeName: { fontSize: 15, fontWeight: '500' },
   routeAddr: { fontSize: 12, marginTop: 2 },
 
-  // Estado vacío
   emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
+
+  // Barra inferior "Ver en mapa"
+  viewMapBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  viewMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#333',
+    borderRadius: 28,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  viewMapBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    width: '82%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  modalTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalInput: {
+    marginHorizontal: 20,
+    marginVertical: 16,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  modalBtns: {
+    flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  modalCancelText: { fontSize: 15 },
+  modalConfirmBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  modalConfirmText: { fontSize: 15, fontWeight: '600', color: '#E8611A' },
 });

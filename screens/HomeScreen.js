@@ -1,18 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, FlatList, Image,
+  View, Text, FlatList, Image, Modal, Pressable,
   TouchableOpacity, StyleSheet, ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
 const ASUNCION = { lat: -25.2867, lng: -57.647 };
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const USER_ROUTES_KEY = '@user_routes';
 
 function getTodayHours(place) {
   if (!place.opening_hours) return null;
@@ -56,7 +59,6 @@ function getPhoto(item) {
   return null;
 }
 
-// Retorna el contenido de imagen de la tarjeta (sin borderRadius propio — el padre lo recorta)
 function CardImage({ photos, placeholder }) {
   const imgs = (photos ?? []).slice(0, 3);
   if (imgs.length === 0) {
@@ -115,6 +117,41 @@ function RouteCard({ item, navigation, t }) {
           <Text style={styles.dirBtnText}>{t('view_on_map')}</Text>
           <Ionicons name="map" size={13} color="#fff" />
         </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function UserRouteCard({ item, navigation, t, onDelete }) {
+  const { colors } = useTheme();
+  const allPhotos = (item.places ?? []).map((p) => getPhoto(p)).filter(Boolean);
+  const photos = allPhotos.length >= 3 ? allPhotos.slice(0, 3) : allPhotos.slice(0, 1);
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card }]}>
+      <CardImage photos={photos} placeholder={colors.photoPlaceholder} />
+      <View style={styles.cardBody}>
+        <View style={styles.cardInfo}>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.cardMeta, { color: colors.textSub }]}>
+            {t('places_count', { n: item.places.length })}
+          </Text>
+        </View>
+        <View style={{ gap: 8, alignItems: 'flex-end' }}>
+          <TouchableOpacity
+            style={styles.dirBtn}
+            onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
+          >
+            <Text style={styles.dirBtnText}>{t('view_on_map')}</Text>
+            <Ionicons name="map" size={13} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.dirBtn, { backgroundColor: '#E8344E' }]}
+            onPress={() => onDelete(item.id)}
+          >
+            <Text style={styles.dirBtnText}>{t('delete')}</Text>
+            <Ionicons name="trash-outline" size={13} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -198,8 +235,11 @@ export default function HomeScreen({ navigation }) {
   ];
 
   const [activeCategory, setActiveCategory] = useState('restaurant');
+  const [routeSubTab, setRouteSubTab] = useState('presets');
+  const [deleteModalId, setDeleteModalId] = useState(null);
   const [location, setLocation] = useState(ASUNCION);
   const [items, setItems] = useState([]);
+  const [userRoutes, setUserRoutes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -250,6 +290,37 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
+  const loadUserRoutes = useCallback(() => {
+    AsyncStorage.getItem(USER_ROUTES_KEY).then((stored) => {
+      setUserRoutes(stored ? JSON.parse(stored) : []);
+    });
+  }, []);
+
+  // Cargar rutas del usuario cuando se activa la pestaña de rutas
+  useEffect(() => {
+    if (activeCategory === 'routes') loadUserRoutes();
+  }, [activeCategory, loadUserRoutes]);
+
+  // Recargar al volver de RouteEditorScreen
+  useFocusEffect(
+    useCallback(() => {
+      if (activeCategory === 'routes') loadUserRoutes();
+    }, [activeCategory, loadUserRoutes])
+  );
+
+  const deleteUserRoute = (id) => setDeleteModalId(id);
+
+  const confirmDeleteUserRoute = async () => {
+    const updated = userRoutes.filter((r) => r.id !== deleteModalId);
+    setDeleteModalId(null);
+    setUserRoutes(updated);
+    await AsyncStorage.setItem(USER_ROUTES_KEY, JSON.stringify(updated));
+  };
+
+  const isUserTab = activeCategory === 'routes' && routeSubTab === 'user';
+  const listData = isUserTab ? userRoutes : items;
+  const showLoading = loading && !isUserTab;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]} edges={['top']}>
       <TouchableOpacity
@@ -280,29 +351,83 @@ export default function HomeScreen({ navigation }) {
         })}
       </View>
 
-      {loading
+      {activeCategory === 'routes' && (
+        <View style={[styles.routeSubTabs, { borderBottomColor: colors.border }]}>
+          {[
+            { key: 'presets', label: t('routes_app') },
+            { key: 'user',    label: t('routes_mine') },
+          ].map((tab) => {
+            const active = routeSubTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={styles.routeSubTab}
+                onPress={() => setRouteSubTab(tab.key)}
+              >
+                <Text style={[styles.routeSubTabText, { color: active ? '#E8611A' : colors.textSub }, active && styles.routeSubTabTextActive]}>
+                  {tab.label}
+                </Text>
+                {active && <View style={styles.routeSubTabUnderline} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {showLoading
         ? <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#E8611A" />
         : (
           <FlatList
-            data={items}
+            data={listData}
             keyExtractor={(item) => String(item.id)}
             renderItem={({ item }) =>
               activeCategory === 'events'
                 ? <EventCard item={item} />
                 : activeCategory === 'routes'
-                  ? <RouteCard item={item} navigation={navigation} t={t} />
+                  ? (isUserTab
+                      ? <UserRouteCard item={item} navigation={navigation} t={t} onDelete={deleteUserRoute} />
+                      : <RouteCard item={item} navigation={navigation} t={t} />)
                   : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} navigation={navigation} t={t} />
             }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                {error ? `Error: ${error}` : t('no_results')}
+                {error ? `Error: ${error}` : t(isUserTab ? 'no_user_routes' : 'no_results')}
               </Text>
             }
           />
         )
       }
+
+      <Modal
+        visible={deleteModalId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalId(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setDeleteModalId(null)}>
+          <Pressable style={[styles.modalBox, { backgroundColor: colors.modalBg }]} onPress={() => {}}>
+            <Text style={[styles.modalTitle, { color: colors.textSub, borderBottomColor: colors.modalBorder }]}>
+              {t('delete_route_title')}
+            </Text>
+            <View style={[styles.modalItem, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalMsg, { color: colors.textSub }]}>{t('delete_route_confirm')}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.modalItem, { justifyContent: 'center', borderBottomColor: colors.border }]}
+              onPress={confirmDeleteUserRoute}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modalDestructiveText}>{t('delete')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeleteModalId(null)}>
+              <Text style={[styles.modalCancelText, { color: colors.textMuted }]}>{t('cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -343,13 +468,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8611A',
     borderRadius: 1,
   },
+  routeSubTabs: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  routeSubTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    position: 'relative',
+  },
+  routeSubTabText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  routeSubTabTextActive: { fontWeight: '700' },
+  routeSubTabUnderline: {
+    position: 'absolute',
+    bottom: 0, left: 20, right: 20,
+    height: 2,
+    backgroundColor: '#E8611A',
+    borderRadius: 1,
+  },
   list: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 20,
     gap: 12,
   },
-  // Tarjeta — el borderRadius recorta la imagen y unifica el fondo del texto
   card: {
     borderRadius: 14,
     overflow: 'hidden',
@@ -380,4 +526,47 @@ const styles = StyleSheet.create({
   },
   dirBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
   emptyText: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    width: '82%',
+    borderRadius: 16,
+    paddingTop: 20,
+    paddingBottom: 8,
+    overflow: 'hidden',
+  },
+  modalTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginHorizontal: 20,
+  },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalMsg: {
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
+  modalDestructiveText: {
+    fontSize: 16,
+    color: '#E8344E',
+    fontWeight: '600',
+  },
+  modalCancelBtn: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 15 },
 });

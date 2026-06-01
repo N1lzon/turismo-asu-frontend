@@ -32,6 +32,15 @@ export default {
   // Editor de ruta
   save: 'Guardar',
   route_empty: 'Busca y añade lugares a tu ruta',
+  routes_app: 'De la app',
+  routes_mine: 'Mis rutas',
+  no_user_routes: 'Aún no tienes rutas guardadas.',
+  delete: 'Borrar',
+  delete_route_title: 'Borrar ruta',
+  delete_route_confirm: '¿Borrar esta ruta? Esta acción no se puede deshacer.',
+  my_route: 'Mi ruta',
+  save_route_title: 'Guardar ruta',
+  route_name_placeholder_input: 'Nombre de la ruta',
 
   // Mapa
   open_in: 'Abrir en…',
