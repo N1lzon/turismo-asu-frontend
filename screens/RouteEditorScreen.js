@@ -7,7 +7,7 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { BASE_URL } from '../config';
+import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -173,7 +173,7 @@ export default function RouteEditorScreen({ navigation }) {
     if (!text.trim()) { setSearchResults([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/places/search?q=${encodeURIComponent(text.trim())}`);
+      const res = await apiFetch(`${BASE_URL}/places/search?q=${encodeURIComponent(text.trim())}`);
       const data = await res.json();
       setSearchResults(Array.isArray(data) ? data : []);
     } catch {
@@ -207,8 +207,8 @@ export default function RouteEditorScreen({ navigation }) {
           <Ionicons name="arrow-back" size={22} color={colors.backIcon} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>{t('new_route')}</Text>
-        <TouchableOpacity onPress={saveRoute} style={styles.headerBtn} disabled={routePlaces.length === 0}>
-          <Text style={[styles.saveText, routePlaces.length === 0 && { opacity: 0.3 }]}>{t('save')}</Text>
+        <TouchableOpacity onPress={saveRoute} style={styles.headerBtnRight} disabled={routePlaces.length === 0}>
+          <Text numberOfLines={1} style={[styles.saveText, routePlaces.length === 0 && { opacity: 0.3 }]}>{t('save')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -315,6 +315,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerBtn: { width: 52, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerBtnRight: { minWidth: 64, height: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600' },
   saveText: { color: '#E8611A', fontSize: 16, fontWeight: '600' },
 

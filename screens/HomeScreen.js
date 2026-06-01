@@ -7,7 +7,7 @@ import {
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BASE_URL } from '../config';
+import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -219,10 +219,10 @@ export default function HomeScreen({ navigation }) {
     try {
       let data;
       if (activeCategory === 'routes') {
-        const res = await fetch(`${BASE_URL}/routes/presets`);
+        const res = await apiFetch(`${BASE_URL}/routes/presets`);
         const presets = await res.json();
         const detailed = await Promise.all(
-          presets.map((r) => fetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json()))
+          presets.map((r) => apiFetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json()))
         );
         data = detailed.map((route) => {
           const firstPlace = route.places?.[0];

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BASE_URL } from '../config';
+import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -40,7 +40,7 @@ export default function SearchScreen({ navigation }) {
     if (!text.trim()) { setItems([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/places/search?q=${encodeURIComponent(text.trim())}`);
+      const res = await apiFetch(`${BASE_URL}/places/search?q=${encodeURIComponent(text.trim())}`);
       const data = await res.json();
       setItems(Array.isArray(data) ? data : []);
     } catch {

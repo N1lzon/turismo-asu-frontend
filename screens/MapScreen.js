@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { BASE_URL } from '../config';
+import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -148,7 +148,7 @@ export default function MapScreen({ route, navigation }) {
   const fetchNearby = async (lat, lng) => {
     setLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/places/nearby?lat=${lat}&lng=${lng}&radius=500`);
+      const res = await apiFetch(`${BASE_URL}/places/nearby?lat=${lat}&lng=${lng}&radius=500`);
       const data = JSON.parse(await res.text());
       setPlaces(Array.isArray(data) ? data : []);
     } catch {
@@ -251,7 +251,7 @@ export default function MapScreen({ route, navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.newRouteBtn}
-            onPress={() => routePlaces.length === 0 && navigation.navigate('RouteEditor')}
+            onPress={() => navigation.navigate('RouteEditor')}
           >
             {routePlaces.length > 0 ? (
               <>
