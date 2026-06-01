@@ -4,10 +4,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { LanguageProvider, useTranslation } from './i18n';
+import { ThemeProvider, useTheme } from './theme';
 import HomeScreen from './screens/HomeScreen';
 import MapScreen from './screens/MapScreen';
 import MapSearchScreen from './screens/MapSearchScreen';
+import RouteEditorScreen from './screens/RouteEditorScreen';
 import OptionsScreen from './screens/OptionsScreen';
 import SearchScreen from './screens/SearchScreen';
 import PlaceDetailScreen from './screens/PlaceDetailScreen';
@@ -36,6 +40,7 @@ function MapStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Map" component={MapScreen} />
       <Stack.Screen name="MapSearch" component={MapSearchScreen} options={{ animation: 'fade' }} />
+      <Stack.Screen name="RouteEditor" component={RouteEditorScreen} options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="PlaceDetail" component={PlaceDetailScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
@@ -43,39 +48,57 @@ function MapStack() {
 
 function AppTabs() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  const { colors, isDark } = useTheme();
+
+  const TAB_LABELS = {
+    Inicio:   t('tab_home'),
+    Mapa:     t('tab_map'),
+    Opciones: t('tab_options'),
+  };
+
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarActiveTintColor: '#E8611A',
-        tabBarInactiveTintColor: '#888',
-        tabBarStyle: {
-          borderTopWidth: 1,
-          borderTopColor: '#eee',
-          height: 60 + insets.bottom,
-          paddingBottom: insets.bottom,
-        },
-        tabBarIconStyle: { marginTop: 0 },
-        tabBarIcon: ({ focused, color, size }) => {
-          const [filledIcon, outlineIcon] = TAB_ICONS[route.name];
-          return <Ionicons name={focused ? filledIcon : outlineIcon} size={size} color={color} />;
-        },
-      })}
-    >
-      <Tab.Screen name="Inicio"   component={HomeStack}    />
-      <Tab.Screen name="Mapa"     component={MapStack}     />
-      <Tab.Screen name="Opciones" component={OptionsScreen} />
-    </Tab.Navigator>
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarActiveTintColor: '#E8611A',
+          tabBarInactiveTintColor: isDark ? '#666' : '#888',
+          tabBarStyle: {
+            borderTopWidth: 1,
+            borderTopColor: colors.tabBorder,
+            height: 60 + insets.bottom,
+            paddingBottom: insets.bottom,
+            backgroundColor: colors.tabBg,
+          },
+          tabBarLabel: TAB_LABELS[route.name],
+          tabBarIcon: ({ focused, color, size }) => {
+            const [filledIcon, outlineIcon] = TAB_ICONS[route.name];
+            return <Ionicons name={focused ? filledIcon : outlineIcon} size={size} color={color} />;
+          },
+        })}
+      >
+        <Tab.Screen name="Inicio"   component={HomeStack}    />
+        <Tab.Screen name="Mapa"     component={MapStack}     />
+        <Tab.Screen name="Opciones" component={OptionsScreen} />
+      </Tab.Navigator>
+    </>
   );
 }
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <AppTabs />
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <NavigationContainer>
+              <AppTabs />
+            </NavigationContainer>
+          </ThemeProvider>
+        </LanguageProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

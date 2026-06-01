@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TextInput, FlatList, Image,
+  View, Text, FlatList, Image,
   TouchableOpacity, StyleSheet, ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
@@ -8,16 +8,10 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../config';
+import { useTranslation } from '../i18n';
+import { useTheme } from '../theme';
 
 const ASUNCION = { lat: -25.2867, lng: -57.647 };
-
-const CATEGORIES = [
-  { label: 'Gastronomía', key: 'restaurant', icon: 'restaurant-outline' },
-  { label: 'Lugares',     key: 'museum',     icon: 'location-outline'   },
-  { label: 'Hospedaje',   key: 'hotel',      icon: 'business-outline'   },
-  { label: 'Rutas',       key: 'routes',     icon: 'map-outline'        },
-];
-
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
 function getTodayHours(place) {
@@ -38,11 +32,11 @@ function isOpen(place) {
   return minutes >= oh * 60 + om && minutes < ch * 60 + cm;
 }
 
-function formatDistance(meters) {
+function formatDistance(meters, t) {
   if (meters == null) return '';
   return meters < 1000
-    ? `A ${Math.round(meters)}m.`
-    : `A ${(meters / 1000).toFixed(1)}km.`;
+    ? t('dist_meters', { n: Math.round(meters) })
+    : t('dist_km', { n: (meters / 1000).toFixed(1) });
 }
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
@@ -62,25 +56,25 @@ function getPhoto(item) {
   return null;
 }
 
-
-function CollageImage({ photos }) {
-  const imgs = photos.slice(0, 3);
+// Retorna el contenido de imagen de la tarjeta (sin borderRadius propio — el padre lo recorta)
+function CardImage({ photos, placeholder }) {
+  const imgs = (photos ?? []).slice(0, 3);
   if (imgs.length === 0) {
-    return <View style={[styles.cardImage, styles.cardImagePlaceholder]} />;
+    return <View style={[styles.cardImg, { backgroundColor: placeholder }]} />;
   }
   if (imgs.length === 1) {
-    return <Image source={{ uri: imgs[0] }} style={styles.cardImage} />;
+    return <Image source={{ uri: imgs[0] }} style={styles.cardImg} />;
   }
   if (imgs.length === 2) {
     return (
-      <View style={[styles.cardImage, { flexDirection: 'row', gap: 2, overflow: 'hidden', borderRadius: 14 }]}>
+      <View style={[styles.cardImg, { flexDirection: 'row', gap: 2, overflow: 'hidden' }]}>
         <Image source={{ uri: imgs[0] }} style={{ flex: 1, height: '100%' }} />
         <Image source={{ uri: imgs[1] }} style={{ flex: 1, height: '100%' }} />
       </View>
     );
   }
   return (
-    <View style={[styles.cardImage, { flexDirection: 'row', gap: 2, overflow: 'hidden', borderRadius: 14 }]}>
+    <View style={[styles.cardImg, { flexDirection: 'row', gap: 2, overflow: 'hidden' }]}>
       <Image source={{ uri: imgs[0] }} style={{ flex: 1, height: '100%' }} />
       <View style={{ flex: 1, gap: 2 }}>
         <Image source={{ uri: imgs[1] }} style={{ flex: 1, width: '100%' }} />
@@ -90,37 +84,35 @@ function CollageImage({ photos }) {
   );
 }
 
-function RouteCard({ item, navigation }) {
-  const photos = (item.places ?? [])
-    .slice(0, 3)
-    .map((p) => p.photos?.[0])
-    .filter(Boolean);
+function RouteCard({ item, navigation, t }) {
+  const { colors } = useTheme();
+  const photos = (item.places ?? []).slice(0, 3).map((p) => p.photos?.[0]).filter(Boolean);
   const startTime = item.start_time ? item.start_time.slice(0, 5) + ' hs.' : null;
-  const distanceText = item.distance_meters != null ? formatDistance(item.distance_meters) : null;
+  const distanceText = item.distance_meters != null ? formatDistance(item.distance_meters, t) : null;
 
   return (
-    <View style={styles.card}>
-      <CollageImage photos={photos} />
+    <View style={[styles.card, { backgroundColor: colors.card }]}>
+      <CardImage photos={photos} placeholder={colors.photoPlaceholder} />
       <View style={styles.cardBody}>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle}>{item.name}</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
           {startTime && (
             <Text style={[styles.cardStatus, { color: '#E8611A' }]}>
-              Inicia a las {startTime}
+              {t('starts_at', { time: startTime })}
             </Text>
           )}
           {distanceText && (
-            <Text style={styles.cardMeta}>{distanceText} al punto de inicio</Text>
+            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{distanceText} {t('to_start_point')}</Text>
           )}
           {item.total_places != null && (
-            <Text style={styles.cardMeta}>{item.total_places} lugares</Text>
+            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{t('places_count', { n: item.total_places })}</Text>
           )}
         </View>
         <TouchableOpacity
           style={styles.dirBtn}
           onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
         >
-          <Text style={styles.dirBtnText}>Ver en mapa</Text>
+          <Text style={styles.dirBtnText}>{t('view_on_map')}</Text>
           <Ionicons name="map" size={13} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -128,36 +120,38 @@ function RouteCard({ item, navigation }) {
   );
 }
 
-function PlaceCard({ item, onPress, navigation }) {
+function PlaceCard({ item, onPress, navigation, t }) {
+  const { colors } = useTheme();
   const open = isOpen(item);
   const todayHours = getTodayHours(item);
   const photo = getPhoto(item);
+
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={[styles.card, { backgroundColor: colors.card }]} onPress={onPress} activeOpacity={0.85}>
       {photo
-        ? <Image source={{ uri: photo }} style={styles.cardImage} />
-        : <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
+        ? <Image source={{ uri: photo }} style={styles.cardImg} />
+        : <View style={[styles.cardImg, { backgroundColor: colors.photoPlaceholder }]} />
       }
       <View style={styles.cardBody}>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle}>{item.name}</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
           {open !== null && (
-            <Text style={[styles.cardStatus, { color: open ? '#E8611A' : '#999' }]}>
-              {open ? 'Abierto' : 'Cerrado'}
+            <Text style={[styles.cardStatus, { color: open ? '#E8611A' : colors.closedColor }]}>
+              {open ? t('open_status') : t('closed_status')}
             </Text>
           )}
           {todayHours && todayHours !== 'Cerrado' && (
-            <Text style={styles.cardMeta}>{todayHours} hs.</Text>
+            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{todayHours} hs.</Text>
           )}
           {item.distance_meters != null && (
-            <Text style={styles.cardMeta}>{formatDistance(item.distance_meters)}</Text>
+            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{formatDistance(item.distance_meters, t)}</Text>
           )}
         </View>
         <TouchableOpacity
           style={styles.dirBtn}
           onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { destination: item } })}
         >
-          <Text style={styles.dirBtnText}>Como llegar</Text>
+          <Text style={styles.dirBtnText}>{t('directions')}</Text>
           <Ionicons name="location" size={13} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -166,23 +160,25 @@ function PlaceCard({ item, onPress, navigation }) {
 }
 
 function EventCard({ item }) {
+  const { colors } = useTheme();
   const photo = getPhoto(item);
+
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: colors.card }]}>
       {photo
-        ? <Image source={{ uri: photo }} style={styles.cardImage} />
-        : <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
+        ? <Image source={{ uri: photo }} style={styles.cardImg} />
+        : <View style={[styles.cardImg, { backgroundColor: colors.photoPlaceholder }]} />
       }
       <View style={styles.cardBody}>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle}>{item.name}</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
           <Text style={[styles.cardStatus, { color: '#E8611A' }]}>{item.date}</Text>
           {item.start_time && item.end_time && (
-            <Text style={styles.cardMeta}>
+            <Text style={[styles.cardMeta, { color: colors.textSub }]}>
               {item.start_time.slice(0, 5)} hs. – {item.end_time.slice(0, 5)} hs.
             </Text>
           )}
-          {item.address && <Text style={styles.cardMeta}>{item.address}</Text>}
+          {item.address && <Text style={[styles.cardMeta, { color: colors.textSub }]}>{item.address}</Text>}
         </View>
       </View>
     </View>
@@ -191,6 +187,16 @@ function EventCard({ item }) {
 
 export default function HomeScreen({ navigation }) {
   const { width: screenWidth } = useWindowDimensions();
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+
+  const CATEGORIES = [
+    { tKey: 'cat_gastronomy', key: 'restaurant', icon: 'restaurant-outline' },
+    { tKey: 'cat_places',     key: 'museum',     icon: 'location-outline'   },
+    { tKey: 'cat_lodging',    key: 'hotel',      icon: 'business-outline'   },
+    { tKey: 'cat_routes',     key: 'routes',     icon: 'map-outline'        },
+  ];
+
   const [activeCategory, setActiveCategory] = useState('restaurant');
   const [location, setLocation] = useState(ASUNCION);
   const [items, setItems] = useState([]);
@@ -216,16 +222,13 @@ export default function HomeScreen({ navigation }) {
         const res = await fetch(`${BASE_URL}/routes/presets`);
         const presets = await res.json();
         const detailed = await Promise.all(
-          presets.map((r) =>
-            fetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json())
-          )
+          presets.map((r) => fetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json()))
         );
         data = detailed.map((route) => {
           const firstPlace = route.places?.[0];
-          const distance_meters =
-            firstPlace?.lat != null
-              ? haversineMeters(location.lat, location.lng, firstPlace.lat, firstPlace.lng)
-              : null;
+          const distance_meters = firstPlace?.lat != null
+            ? haversineMeters(location.lat, location.lng, firstPlace.lat, firstPlace.lng)
+            : null;
           return { ...route, distance_meters };
         });
       } else {
@@ -234,11 +237,7 @@ export default function HomeScreen({ navigation }) {
           : `${BASE_URL}/places/nearby?lat=${location.lat}&lng=${location.lng}&radius=50000&category=${activeCategory}`;
         const res = await fetch(url);
         const text = await res.text();
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error(text.slice(0, 120));
-        }
+        try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 120)); }
       }
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -251,31 +250,36 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  const selectCategory = (key) => setActiveCategory(key);
-
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Barra de búsqueda */}
-      <TouchableOpacity style={styles.searchRow} onPress={() => navigation.navigate('Search')} activeOpacity={0.7}>
-        <Ionicons name="search" size={18} color="#aaa" style={{ marginRight: 8 }} />
-        <Text style={styles.searchPlaceholder}>Buscar lugares...</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]} edges={['top']}>
+      <TouchableOpacity
+        style={[styles.searchRow, { backgroundColor: colors.surface }]}
+        onPress={() => navigation.navigate('Search')}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="search" size={18} color={colors.placeholder} style={{ marginRight: 8 }} />
+        <Text style={[styles.searchPlaceholder, { color: colors.placeholder }]}>{t('search_placeholder')}</Text>
       </TouchableOpacity>
 
-      {/* Pestañas de categoría */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
         {CATEGORIES.map((cat) => {
           const active = activeCategory === cat.key;
           return (
-            <TouchableOpacity key={cat.key} style={[styles.tab, { width: screenWidth / CATEGORIES.length }]} onPress={() => selectCategory(cat.key)}>
-              <Ionicons name={cat.icon} size={22} color={active ? '#E8611A' : '#888'} />
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{cat.label}</Text>
+            <TouchableOpacity
+              key={cat.key}
+              style={[styles.tab, { width: screenWidth / CATEGORIES.length }]}
+              onPress={() => setActiveCategory(cat.key)}
+            >
+              <Ionicons name={cat.icon} size={22} color={active ? '#E8611A' : colors.textSub} />
+              <Text style={[styles.tabLabel, { color: active ? '#E8611A' : colors.textSub }, active && styles.tabLabelActive]}>
+                {t(cat.tKey)}
+              </Text>
               {active && <View style={styles.tabUnderline} />}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* Contenido */}
       {loading
         ? <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#E8611A" />
         : (
@@ -286,14 +290,14 @@ export default function HomeScreen({ navigation }) {
               activeCategory === 'events'
                 ? <EventCard item={item} />
                 : activeCategory === 'routes'
-                  ? <RouteCard item={item} navigation={navigation} />
-                  : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} navigation={navigation} />
+                  ? <RouteCard item={item} navigation={navigation} t={t} />
+                  : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} navigation={navigation} t={t} />
             }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <Text style={styles.emptyText}>
-                {error ? `Error: ${error}` : 'No se encontraron resultados.'}
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                {error ? `Error: ${error}` : t('no_results')}
               </Text>
             }
           />
@@ -304,30 +308,21 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  container: { flex: 1 },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
     marginTop: 10,
     marginBottom: 6,
-    backgroundColor: '#f0f0f0',
     borderRadius: 24,
     paddingHorizontal: 14,
     height: 44,
   },
-  searchPlaceholder: {
-    flex: 1,
-    fontSize: 15,
-    color: '#aaa',
-  },
+  searchPlaceholder: { flex: 1, fontSize: 15 },
   tabs: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   tab: {
     alignItems: 'center',
@@ -336,20 +331,14 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 11,
-    color: '#888',
     marginTop: 3,
     alignSelf: 'stretch',
     textAlign: 'center',
   },
-  tabLabelActive: {
-    color: '#E8611A',
-    fontWeight: '600',
-  },
+  tabLabelActive: { fontWeight: '600' },
   tabUnderline: {
     position: 'absolute',
-    bottom: 0,
-    left: 6,
-    right: 6,
+    bottom: 0, left: 6, right: 6,
     height: 2,
     backgroundColor: '#E8611A',
     borderRadius: 1,
@@ -358,44 +347,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 20,
+    gap: 12,
   },
+  // Tarjeta — el borderRadius recorta la imagen y unifica el fondo del texto
   card: {
-    marginBottom: 24,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  cardImage: {
+  cardImg: {
     width: '100%',
     height: 190,
-    borderRadius: 14,
-  },
-  cardImagePlaceholder: {
-    backgroundColor: '#ddd',
   },
   cardBody: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginTop: 10,
-    paddingHorizontal: 2,
+    padding: 10,
+    paddingTop: 8,
   },
-  cardInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  cardStatus: {
-    fontSize: 13,
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  cardMeta: {
-    fontSize: 12,
-    color: '#777',
-    marginTop: 1,
-  },
+  cardInfo: { flex: 1, marginRight: 10 },
+  cardTitle: { fontSize: 17, fontWeight: '600' },
+  cardStatus: { fontSize: 13, marginTop: 2, fontWeight: '500' },
+  cardMeta: { fontSize: 12, marginTop: 1 },
   dirBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -405,15 +378,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 5,
   },
-  dirBtnText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#aaa',
-    marginTop: 60,
-    fontSize: 14,
-  },
+  dirBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
+  emptyText: { textAlign: 'center', marginTop: 60, fontSize: 14 },
 });
