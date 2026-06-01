@@ -103,13 +103,13 @@ function RouteItem({ item, displayIndex, isDragging, callbacks }) {
   );
 }
 
-export default function RouteEditorScreen({ navigation }) {
+export default function RouteEditorScreen({ route, navigation }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
 
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [routePlaces, setRoutePlaces] = useState([]);
+  const [routePlaces, setRoutePlaces] = useState(route?.params?.initialPlaces ?? []);
   const [loading, setLoading] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dropIdx, setDropIdx] = useState(null);

@@ -251,7 +251,7 @@ export default function MapScreen({ route, navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.newRouteBtn}
-            onPress={() => navigation.navigate('RouteEditor')}
+            onPress={() => navigation.navigate('RouteEditor', { initialPlaces: routePlaces })}
           >
             {routePlaces.length > 0 ? (
               <>
