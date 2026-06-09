@@ -301,11 +301,10 @@ export default function HomeScreen({ navigation }) {
     if (activeCategory === 'routes') loadUserRoutes();
   }, [activeCategory, loadUserRoutes]);
 
-  // Recargar al volver de RouteEditorScreen
   useFocusEffect(
     useCallback(() => {
-      if (activeCategory === 'routes') loadUserRoutes();
-    }, [activeCategory, loadUserRoutes])
+      loadUserRoutes();
+    }, [loadUserRoutes])
   );
 
   const deleteUserRoute = (id) => setDeleteModalId(id);

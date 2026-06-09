@@ -195,12 +195,14 @@ export default function RouteEditorScreen({ route, navigation }) {
   // Abre el modal para nombrar y guardar la ruta localmente
   const saveRoute = () => {
     if (routePlaces.length === 0) return;
-    setRouteName(existingRouteName);
+    setRouteName(existingRouteName || t('my_route'));
     setSaveModalVisible(true);
   };
 
   const handleSave = async () => {
-    const name = routeName.trim() || t('my_route');
+    const name = routeName.trim();
+    if (!name) return;
+
     const routeToSave = {
       id: existingRouteId ?? Date.now(),
       name,
@@ -210,8 +212,11 @@ export default function RouteEditorScreen({ route, navigation }) {
     try {
       const stored = await AsyncStorage.getItem(USER_ROUTES_KEY);
       const existing = stored ? JSON.parse(stored) : [];
-      const updated = existingRouteId
-        ? existing.map((r) => r.id === existingRouteId ? routeToSave : r)
+      const idx = existing.findIndex(
+        (r) => r.id === existingRouteId || (existingRouteName && r.name === existingRouteName)
+      );
+      const updated = idx !== -1
+        ? existing.map((r, i) => (i === idx ? routeToSave : r))
         : [...existing, routeToSave];
       await AsyncStorage.setItem(USER_ROUTES_KEY, JSON.stringify(updated));
     } catch {}
