@@ -8,6 +8,7 @@ export default {
   cat_gastronomy: 'Gastronomia',
   cat_places: 'Lugares',
   cat_lodging: 'Hospedagem',
+  cat_events: 'Eventos',
   cat_routes: 'Rotas',
 
   // Comum

@@ -231,6 +231,7 @@ export default function HomeScreen({ navigation }) {
     { tKey: 'cat_gastronomy', key: 'restaurant', icon: 'restaurant-outline' },
     { tKey: 'cat_places',     key: 'museum',     icon: 'location-outline'   },
     { tKey: 'cat_lodging',    key: 'hotel',      icon: 'business-outline'   },
+    { tKey: 'cat_events',     key: 'events',     icon: 'calendar-outline'   },
     { tKey: 'cat_routes',     key: 'routes',     icon: 'map-outline'        },
   ];
 

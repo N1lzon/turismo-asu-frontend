@@ -8,6 +8,7 @@ export default {
   cat_gastronomy: 'Food',
   cat_places: 'Places',
   cat_lodging: 'Lodging',
+  cat_events: 'Events',
   cat_routes: 'Routes',
 
   // Common
