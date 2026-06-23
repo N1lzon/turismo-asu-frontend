@@ -228,14 +228,14 @@ export default function HomeScreen({ navigation }) {
   const { colors } = useTheme();
 
   const CATEGORIES = [
-    { tKey: 'cat_gastronomy', key: 'restaurant', icon: 'restaurant-outline' },
-    { tKey: 'cat_places',     key: 'museum',     icon: 'location-outline'   },
-    { tKey: 'cat_lodging',    key: 'hotel',      icon: 'business-outline'   },
+    { tKey: 'cat_gastronomy', key: 'gastronomia', icon: 'restaurant-outline' },
+    { tKey: 'cat_places',     key: 'lugares',     icon: 'location-outline'   },
+    { tKey: 'cat_lodging',    key: 'hoteles',      icon: 'business-outline'   },
     { tKey: 'cat_events',     key: 'events',     icon: 'calendar-outline'   },
     { tKey: 'cat_routes',     key: 'routes',     icon: 'map-outline'        },
   ];
 
-  const [activeCategory, setActiveCategory] = useState('restaurant');
+  const [activeCategory, setActiveCategory] = useState('gastronomia');
   const [routeSubTab, setRouteSubTab] = useState('presets');
   const [deleteModalId, setDeleteModalId] = useState(null);
   const [location, setLocation] = useState(ASUNCION);
