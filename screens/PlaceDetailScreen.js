@@ -1,7 +1,7 @@
 import {
   View, Text, Image, TouchableOpacity, StyleSheet,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import LeafletMap from '../components/LeafletMap';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from '../i18n';
@@ -95,22 +95,15 @@ export default function PlaceDetailScreen({ route, navigation }) {
 
       {hasMap ? (
         <View style={styles.mapContainer}>
-          <MapView
+          <LeafletMap
             style={StyleSheet.absoluteFill}
             initialRegion={{
               latitude: place.lat, longitude: place.lng,
               latitudeDelta: 0.006, longitudeDelta: 0.006,
             }}
-            pitchEnabled={false}
-            rotateEnabled={false}
-            userInterfaceStyle={isDark ? 'dark' : 'light'}
-          >
-            <Marker
-              coordinate={{ latitude: place.lat, longitude: place.lng }}
-              title={place.name}
-              pinColor="#E8611A"
-            />
-          </MapView>
+            markers={[{ id: place.id, lat: place.lat, lng: place.lng, name: place.name }]}
+            isDark={isDark}
+          />
         </View>
       ) : (
         <View style={[styles.mapContainer, styles.noMap, { backgroundColor: colors.noMapBg }]}>

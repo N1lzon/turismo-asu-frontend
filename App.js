@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LanguageProvider, useTranslation } from './i18n';
 import { ThemeProvider, useTheme } from './theme';
+import { LocationProvider } from './location';
 import HomeScreen from './screens/HomeScreen';
 import MapScreen from './screens/MapScreen';
 import MapSearchScreen from './screens/MapSearchScreen';
@@ -93,9 +94,11 @@ export default function App() {
       <SafeAreaProvider>
         <LanguageProvider>
           <ThemeProvider>
-            <NavigationContainer>
-              <AppTabs />
-            </NavigationContainer>
+            <LocationProvider>
+              <NavigationContainer>
+                <AppTabs />
+              </NavigationContainer>
+            </LocationProvider>
           </ThemeProvider>
         </LanguageProvider>
       </SafeAreaProvider>

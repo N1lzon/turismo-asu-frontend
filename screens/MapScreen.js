@@ -3,8 +3,9 @@ import {
   View, Text, TouchableOpacity,
   StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import LeafletMap from '../components/LeafletMap';
 import * as Location from 'expo-location';
+import { useLocation } from '../location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -32,43 +33,53 @@ export default function MapScreen({ route, navigation }) {
   const [routePolyline, setRoutePolyline] = useState([]);
   const [routePlaces, setRoutePlaces] = useState([]);
   const [currentRouteData, setCurrentRouteData] = useState(null);
+  const { location: userLocation, locationRef: userLocationRef, setLocation: setUserLocation } = useLocation();
+  const lastLoadedRouteIdRef = useRef(null);
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        const userRegion = {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        };
-        setRegion(userRegion);
-        mapRef.current?.animateToRegion(userRegion, 500);
-        fetchNearby(loc.coords.latitude, loc.coords.longitude);
-      } else {
-        fetchNearby(ASUNCION.latitude, ASUNCION.longitude);
-      }
-    })();
-  }, []);
+    if (userLocationRef.current) {
+      const loc = userLocationRef.current;
+      const userRegion = { ...loc, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+      setRegion(userRegion);
+      mapRef.current?.animateToRegion(userRegion, 500);
+      fetchNearby(loc.latitude, loc.longitude);
+    } else {
+      fetchNearby(ASUNCION.latitude, ASUNCION.longitude);
+    }
+  }, [userLocation]);
 
   useFocusEffect(
     useCallback(() => {
+      mapRef.current?.invalidateSize();
       const routeData = route?.params?.routeData;
-      if (routeData?.places?.length > 0) {
+      if (routeData?.places?.length > 0 && lastLoadedRouteIdRef.current !== routeData.id) {
+        lastLoadedRouteIdRef.current = routeData.id;
         setRoutePlaces(routeData.places);
         setCurrentRouteData(routeData);
         setPlaces([]);
         loadRouteOnMap(routeData.places);
       }
-      const destination = route?.params?.destination;
-      if (destination?.lat != null) {
-        navigation.setParams({ destination: null });
-        routeToDestination(destination);
-      }
-    }, [route?.params?.routeData, route?.params?.destination])
+    }, [route?.params?.routeData])
   );
+
+  useEffect(() => {
+    const routeData = route?.params?.routeData;
+    if (routeData?.places?.length > 0 && lastLoadedRouteIdRef.current !== routeData.id) {
+      lastLoadedRouteIdRef.current = routeData.id;
+      setRoutePlaces(routeData.places);
+      setCurrentRouteData(routeData);
+      setPlaces([]);
+      loadRouteOnMap(routeData.places);
+    }
+  }, [route?.params?.routeData]);
+
+  useEffect(() => {
+    const destination = route?.params?.destination;
+    if (destination?.lat != null) {
+      navigation.setParams({ destination: null });
+      routeToDestination(destination);
+    }
+  }, [route?.params?.destination]);
 
   const routeToDestination = async (dest) => {
     setLoading(true);
@@ -78,14 +89,10 @@ export default function MapScreen({ route, navigation }) {
 
     let originLat = ASUNCION.latitude;
     let originLng = ASUNCION.longitude;
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        originLat = loc.coords.latitude;
-        originLng = loc.coords.longitude;
-      }
-    } catch { /* usa fallback */ }
+    if (userLocationRef.current) {
+      originLat = userLocationRef.current.latitude;
+      originLng = userLocationRef.current.longitude;
+    }
 
     const origin = { lat: originLat, lng: originLng };
     const pts = [origin, { lat: dest.lat, lng: dest.lng }];
@@ -102,6 +109,7 @@ export default function MapScreen({ route, navigation }) {
       setLoading(false);
     }
     setTimeout(() => {
+      mapRef.current?.invalidateSize();
       mapRef.current?.fitToCoordinates(
         pts.map((p) => ({ latitude: p.lat, longitude: p.lng })),
         { edgePadding: { top: 80, right: 50, bottom: 120, left: 50 }, animated: true }
@@ -112,7 +120,13 @@ export default function MapScreen({ route, navigation }) {
   const loadRouteOnMap = async (pts) => {
     const validPts = pts.filter((p) => p.lat != null && p.lng != null);
     if (validPts.length < 2) return;
-    const coordStr = validPts.map((p) => `${p.lng},${p.lat}`).join(';');
+
+    const userLoc = userLocationRef.current;
+    const osrmPts = userLoc
+      ? [{ lat: userLoc.latitude, lng: userLoc.longitude }, ...validPts]
+      : validPts;
+
+    const coordStr = osrmPts.map((p) => `${p.lng},${p.lat}`).join(';');
     try {
       const res = await fetch(`${OSRM_BASE}/${coordStr}?overview=full&geometries=geojson`);
       const data = await res.json();
@@ -120,13 +134,15 @@ export default function MapScreen({ route, navigation }) {
         setRoutePolyline(data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
       }
     } catch {
-      setRoutePolyline(validPts.map((p) => ({ latitude: p.lat, longitude: p.lng })));
+      setRoutePolyline(osrmPts.map((p) => ({ latitude: p.lat, longitude: p.lng })));
     }
+
+    const fitPts = osrmPts.map((p) => ({ latitude: p.lat, longitude: p.lng }));
     setTimeout(() => {
-      mapRef.current?.fitToCoordinates(
-        validPts.map((p) => ({ latitude: p.lat, longitude: p.lng })),
-        { edgePadding: { top: 80, right: 50, bottom: 120, left: 50 }, animated: true }
-      );
+      mapRef.current?.invalidateSize();
+      mapRef.current?.fitToCoordinates(fitPts, {
+        edgePadding: { top: 80, right: 50, bottom: 120, left: 50 }, animated: true,
+      });
     }, 300);
   };
 
@@ -134,6 +150,7 @@ export default function MapScreen({ route, navigation }) {
     setRoutePolyline([]);
     setRoutePlaces([]);
     setCurrentRouteData(null);
+    lastLoadedRouteIdRef.current = null;
     navigation.setParams({ routeData: null });
   };
 
@@ -165,12 +182,9 @@ export default function MapScreen({ route, navigation }) {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return;
     const loc = await Location.getCurrentPositionAsync({});
-    mapRef.current?.animateToRegion({
-      latitude: loc.coords.latitude,
-      longitude: loc.coords.longitude,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    }, 500);
+    const newLoc = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+    setUserLocation(newLoc);
+    mapRef.current?.animateToRegion({ ...newLoc, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
   };
 
   const focusPlace = (place) => {
@@ -181,42 +195,24 @@ export default function MapScreen({ route, navigation }) {
     }, 500);
   };
 
+  const handleMarkerPress = useCallback((id) => {
+    const place = places.find((p) => String(p.id) === String(id));
+    if (place) focusPlace(place);
+  }, [places]);
+
   return (
     <View style={styles.container}>
-      <MapView
+      <LeafletMap
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         initialRegion={region}
-        showsUserLocation
-        showsMyLocationButton={false}
-        userInterfaceStyle={isDark ? 'dark' : 'light'}
-      >
-        {places.map((place) => (
-          <Marker
-            key={place.id}
-            coordinate={{ latitude: place.lat, longitude: place.lng }}
-            title={place.name}
-            description={place.address}
-            pinColor="#E8611A"
-            onPress={() => focusPlace(place)}
-          />
-        ))}
-        {routePolyline.length > 0 && (
-          <Polyline coordinates={routePolyline} strokeColor="#E8611A" strokeWidth={4} />
-        )}
-        {routePlaces.map((place, index) => (
-          <Marker
-            key={`rp-${place.id}`}
-            coordinate={{ latitude: place.lat, longitude: place.lng }}
-            title={`${index + 1}. ${place.name}`}
-            description={place.address}
-          >
-            <View style={styles.routeMarker}>
-              <Text style={styles.routeMarkerText}>{index + 1}</Text>
-            </View>
-          </Marker>
-        ))}
-      </MapView>
+        markers={places}
+        routeMarkers={routePlaces}
+        polylineCoords={routePolyline}
+        userLocation={userLocation}
+        isDark={isDark}
+        onMarkerPress={handleMarkerPress}
+      />
 
       <SafeAreaView edges={['top']} style={styles.searchWrapper} pointerEvents="box-none">
         <TouchableOpacity

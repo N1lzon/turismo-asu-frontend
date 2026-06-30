@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, Image, Modal, Pressable,
   TouchableOpacity, StyleSheet, ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import * as Location from 'expo-location';
+import { useLocation } from '../location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -13,7 +13,6 @@ import { BASE_URL, apiFetch } from '../config';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
-const ASUNCION = { lat: -25.2867, lng: -57.647 };
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const USER_ROUTES_KEY = '@user_routes';
 
@@ -235,24 +234,19 @@ export default function HomeScreen({ navigation }) {
     { tKey: 'cat_routes',     key: 'routes',     icon: 'map-outline'        },
   ];
 
+  const { location: rawLocation } = useLocation();
+  const location = useMemo(
+    () => ({ lat: rawLocation.latitude, lng: rawLocation.longitude }),
+    [rawLocation.latitude, rawLocation.longitude],
+  );
+
   const [activeCategory, setActiveCategory] = useState('gastronomia');
   const [routeSubTab, setRouteSubTab] = useState('presets');
   const [deleteModalId, setDeleteModalId] = useState(null);
-  const [location, setLocation] = useState(ASUNCION);
   const [items, setItems] = useState([]);
   const [userRoutes, setUserRoutes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        setLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-      }
-    })();
-  }, []);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
