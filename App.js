@@ -16,6 +16,7 @@ import RouteEditorScreen from './screens/RouteEditorScreen';
 import OptionsScreen from './screens/OptionsScreen';
 import SearchScreen from './screens/SearchScreen';
 import PlaceDetailScreen from './screens/PlaceDetailScreen';
+import RouteDetailScreen from './screens/RouteDetailScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -32,6 +33,7 @@ function HomeStack() {
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="Search" component={SearchScreen} options={{ animation: 'fade' }} />
       <Stack.Screen name="PlaceDetail" component={PlaceDetailScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="RouteDetail" component={RouteDetailScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }

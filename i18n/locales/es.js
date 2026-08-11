@@ -31,12 +31,16 @@ export default {
   dist_meters: 'A {{n}}m.',
   dist_km: 'A {{n}}km.',
 
+  // Detalle de ruta
+  route_stops_title: 'Paradas del recorrido',
+  total_distance: 'Distancia total: {{d}}',
+
   // Editor de ruta
   save: 'Guardar',
   route_empty: 'Busca y añade lugares a tu ruta',
   routes_app: 'De la app',
   routes_mine: 'Mis rutas',
-  no_user_routes: 'Aún no tienes rutas guardadas.',
+  no_user_routes: 'Aún no tienes rutas personalizadas.',
   delete: 'Borrar',
   delete_route_title: 'Borrar ruta',
   delete_route_confirm: '¿Borrar esta ruta? Esta acción no se puede deshacer.',

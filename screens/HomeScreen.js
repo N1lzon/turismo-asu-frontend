@@ -9,9 +9,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import LeafletMap from '../components/LeafletMap';
+import LeafletMap, { boundsRegion } from '../components/LeafletMap';
 import { BASE_URL, apiFetch } from '../config';
-import { fetchRoute } from '../osrm';
+import { fetchRouteOrStraight } from '../osrm';
+import { formatKm } from '../format';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -54,45 +55,13 @@ function formatDistance(meters, t) {
     : t('dist_km', { n: (meters / 1000).toFixed(1) });
 }
 
-function haversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 function getPhoto(item) {
   if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
   if (typeof item.photo === 'string') return item.photo;
   return null;
 }
 
-function formatKm(meters, language) {
-  if (meters == null) return null;
-  const km = (meters / 1000).toFixed(1);
-  return `${language === 'en' ? km : km.replace('.', ',')} km`;
-}
-
-// Encuadre inicial de la preview: caja que contiene todas las paradas, con aire
-function boundsRegion(places) {
-  const lats = places.map((p) => p.lat);
-  const lngs = places.map((p) => p.lng);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.008),
-    longitudeDelta: Math.max((maxLng - minLng) * 1.6, 0.008),
-  };
-}
-
-// Añade a la ruta el trazado y la distancia total. Si OSRM no responde se cae a
-// tramos rectos entre paradas, para que la tarjeta igual muestre algo.
+// Añade a la ruta su trazado, distancia total y tramos
 async function withGeometry(route) {
   const places = (route.places ?? []).filter((p) => p.lat != null && p.lng != null);
   if (places.length < 2) return route;
@@ -100,16 +69,9 @@ async function withGeometry(route) {
   const key = places.map((p) => p.id).join('-');
   if (geometryCache.has(key)) return { ...route, ...geometryCache.get(key) };
 
-  const points = places.map((p) => ({ lat: p.lat, lng: p.lng }));
-  const resolved = await fetchRoute(points) ?? {
-    geometry: points.map((p) => ({ latitude: p.lat, longitude: p.lng })),
-    distanceMeters: points.reduce(
-      (acc, p, i) => (i === 0 ? 0 : acc + haversineMeters(points[i - 1].lat, points[i - 1].lng, p.lat, p.lng)),
-      0,
-    ),
-  };
-  geometryCache.set(key, resolved);
-  return { ...route, ...resolved };
+  const resolved = await fetchRouteOrStraight(places.map((p) => ({ lat: p.lat, lng: p.lng })));
+  if (resolved) geometryCache.set(key, resolved);
+  return { ...route, ...(resolved ?? {}) };
 }
 
 // Preview no interactiva del trazado de la ruta
@@ -156,7 +118,7 @@ function RouteCard({ item, navigation, t, language, onDelete }) {
     <TouchableOpacity
       style={[styles.card, styles.routeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       activeOpacity={0.85}
-      onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
+      onPress={() => navigation.navigate('RouteDetail', { routeData: item })}
     >
       <RouteMapPreview places={places} geometry={item.geometry} placeholder={colors.photoPlaceholder} />
       <View style={styles.routeCardBody}>
@@ -179,6 +141,33 @@ function RouteCard({ item, navigation, t, language, onDelete }) {
         <Ionicons name="chevron-forward" size={20} color={colors.chevron} />
       </View>
     </TouchableOpacity>
+  );
+}
+
+// Estado vacío de "Mis rutas": no hay nada que listar, así que la pantalla
+// invita a crear la primera
+function UserRoutesEmpty({ navigation, t }) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={styles.emptyState}>
+      <View style={[styles.emptyIconTile, { backgroundColor: colors.surface }]}>
+        <Ionicons name="map-outline" size={40} color="#E8611A" />
+        <Ionicons name="location" size={22} color="#E8611A" style={styles.emptyIconPin} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>{t('routes_mine')}</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.textSub }]}>{t('no_user_routes')}</Text>
+      <TouchableOpacity
+        style={styles.emptyBtn}
+        // initial: false deja Map debajo en el stack; si no, RouteEditor queda
+        // como única ruta y al volver atrás el tab Mapa sigue mostrando el editor
+        onPress={() => navigation.navigate('Mapa', { screen: 'RouteEditor', initial: false })}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={19} color="#fff" />
+        <Text style={styles.emptyBtnText}>{t('new_route')}</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -271,6 +260,7 @@ export default function HomeScreen({ navigation }) {
   const [deleteModalId, setDeleteModalId] = useState(null);
   const [items, setItems] = useState([]);
   const [userRoutes, setUserRoutes] = useState([]);
+  const [userRoutesLoaded, setUserRoutesLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -313,6 +303,10 @@ export default function HomeScreen({ navigation }) {
   const loadUserRoutes = useCallback(async () => {
     const stored = await AsyncStorage.getItem(USER_ROUTES_KEY);
     const saved = stored ? JSON.parse(stored) : [];
+    // Primero se pinta lo que hay guardado y después llega el trazado: si no,
+    // quien tiene rutas vería el estado vacío mientras responde OSRM
+    setUserRoutes(saved);
+    setUserRoutesLoaded(true);
     setUserRoutes(await Promise.all(saved.map(withGeometry)));
   }, []);
 
@@ -412,12 +406,16 @@ export default function HomeScreen({ navigation }) {
                     />
                   : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} navigation={navigation} t={t} />
             }
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, listData.length === 0 && styles.listEmpty]}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                {error ? `Error: ${error}` : t(isUserTab ? 'no_user_routes' : 'no_results')}
-              </Text>
+              isUserTab
+                ? (userRoutesLoaded ? <UserRoutesEmpty navigation={navigation} t={t} /> : null)
+                : (
+                  <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                    {error ? `Error: ${error}` : t('no_results')}
+                  </Text>
+                )
             }
           />
         )
@@ -570,6 +568,24 @@ const styles = StyleSheet.create({
   },
   dirBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
   emptyText: { textAlign: 'center', marginTop: 60, fontSize: 14 },
+
+  // Estado vacío de "Mis rutas"
+  listEmpty: { flexGrow: 1, justifyContent: 'center' },
+  emptyState: { alignItems: 'center', paddingHorizontal: 32, paddingBottom: 40 },
+  emptyIconTile: {
+    width: 76, height: 76, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyIconPin: { position: 'absolute', top: 12, left: 18 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
+  emptySubtitle: { fontSize: 13.5, textAlign: 'center', lineHeight: 19, marginBottom: 20 },
+  emptyBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#E8611A', borderRadius: 24,
+    paddingVertical: 12, paddingHorizontal: 22, gap: 6,
+  },
+  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

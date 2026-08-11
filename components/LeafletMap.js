@@ -7,6 +7,21 @@ function regionToZoom(region) {
   return Math.max(1, Math.min(18, Math.round(Math.log2(360 / region.latitudeDelta))));
 }
 
+// initialRegion que contiene todos los puntos ({ lat, lng }) dados, con aire.
+// El encuadre exacto lo termina de ajustar fitToCoordinates.
+export function boundsRegion(points) {
+  const lats = points.map((p) => p.lat);
+  const lngs = points.map((p) => p.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.008),
+    longitudeDelta: Math.max((maxLng - minLng) * 1.6, 0.008),
+  };
+}
+
 function buildHtml(isDark, lat, lng, zoom, interactive) {
   const tileUrl = isDark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'

@@ -31,12 +31,16 @@ export default {
   dist_meters: '{{n}}m away',
   dist_km: '{{n}}km away',
 
+  // Route detail
+  route_stops_title: 'Route stops',
+  total_distance: 'Total distance: {{d}}',
+
   // Route editor
   save: 'Save',
   route_empty: 'Search and add places to your route',
   routes_app: 'From app',
   routes_mine: 'My routes',
-  no_user_routes: 'No saved routes yet.',
+  no_user_routes: 'You don\'t have any custom routes yet.',
   delete: 'Delete',
   delete_route_title: 'Delete route',
   delete_route_confirm: 'Delete this route? This action cannot be undone.',
