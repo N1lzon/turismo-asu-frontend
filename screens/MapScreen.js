@@ -4,12 +4,12 @@ import {
   StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
 import LeafletMap from '../components/LeafletMap';
-import * as Location from 'expo-location';
-import { useLocation } from '../location';
+import { useLocation, resolvePosition } from '../location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { BASE_URL, apiFetch } from '../config';
+import { OSRM_BASE } from '../osrm';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -19,8 +19,6 @@ const ASUNCION = {
   latitudeDelta: 0.05,
   longitudeDelta: 0.05,
 };
-
-const OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving';
 
 export default function MapScreen({ route, navigation }) {
   const mapRef = useRef(null);
@@ -33,12 +31,36 @@ export default function MapScreen({ route, navigation }) {
   const [routePolyline, setRoutePolyline] = useState([]);
   const [routePlaces, setRoutePlaces] = useState([]);
   const [currentRouteData, setCurrentRouteData] = useState(null);
-  const { location: userLocation, locationRef: userLocationRef, setLocation: setUserLocation } = useLocation();
+  const [locating, setLocating] = useState(false);
+  const {
+    location: userLocation,
+    locationRef: userLocationRef,
+    setLocation: setUserLocation,
+    ready: locationReady,
+  } = useLocation();
   const lastLoadedRouteIdRef = useRef(null);
+  const didInitRef = useRef(false);
+  const locatingRef = useRef(false);
 
+  // Espejo de routePlaces para poder consultarlo desde efectos y callbacks
+  // sin volver a crearlos en cada cambio
+  const routePlacesRef = useRef(routePlaces);
+  routePlacesRef.current = routePlaces;
+
+  // Centrado inicial + carga de cercanos: una sola vez, cuando la ubicación ya
+  // está resuelta. Las actualizaciones posteriores (botón de centrar) no deben
+  // repetir esto, o pisarían el zoom y los marcadores de la ruta en curso.
   useEffect(() => {
-    if (userLocationRef.current) {
-      const loc = userLocationRef.current;
+    if (!locationReady || didInitRef.current) return;
+    didInitRef.current = true;
+
+    const hasRoute = routePlacesRef.current.length > 0
+      || route?.params?.routeData?.places?.length > 0
+      || route?.params?.destination != null;
+    if (hasRoute) return;
+
+    const loc = userLocationRef.current;
+    if (loc) {
       const userRegion = { ...loc, latitudeDelta: 0.05, longitudeDelta: 0.05 };
       setRegion(userRegion);
       mapRef.current?.animateToRegion(userRegion, 500);
@@ -46,7 +68,7 @@ export default function MapScreen({ route, navigation }) {
     } else {
       fetchNearby(ASUNCION.latitude, ASUNCION.longitude);
     }
-  }, [userLocation]);
+  }, [locationReady]);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,7 +141,10 @@ export default function MapScreen({ route, navigation }) {
 
   const loadRouteOnMap = async (pts) => {
     const validPts = pts.filter((p) => p.lat != null && p.lng != null);
-    if (validPts.length < 2) return;
+    if (validPts.length < 2) {
+      setLoading(false);
+      return;
+    }
 
     const userLoc = userLocationRef.current;
     const osrmPts = userLoc
@@ -127,6 +152,7 @@ export default function MapScreen({ route, navigation }) {
       : validPts;
 
     const coordStr = osrmPts.map((p) => `${p.lng},${p.lat}`).join(';');
+    setLoading(true);
     try {
       const res = await fetch(`${OSRM_BASE}/${coordStr}?overview=full&geometries=geojson`);
       const data = await res.json();
@@ -135,6 +161,8 @@ export default function MapScreen({ route, navigation }) {
       }
     } catch {
       setRoutePolyline(osrmPts.map((p) => ({ latitude: p.lat, longitude: p.lng })));
+    } finally {
+      setLoading(false);
     }
 
     const fitPts = osrmPts.map((p) => ({ latitude: p.lat, longitude: p.lng }));
@@ -178,13 +206,36 @@ export default function MapScreen({ route, navigation }) {
     }
   };
 
+  const centerMapOn = (loc) =>
+    mapRef.current?.animateToRegion({ ...loc, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
+
   const centerOnUser = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return;
-    const loc = await Location.getCurrentPositionAsync({});
-    const newLoc = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-    setUserLocation(newLoc);
-    mapRef.current?.animateToRegion({ ...newLoc, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
+    // Con una ruta en pantalla el botón sólo mueve la cámara: no se vuelve a
+    // pedir el GPS ni se toca la ubicación compartida, así la ruta y el punto
+    // azul quedan como están
+    if (routePlacesRef.current.length > 0 && userLocationRef.current) {
+      centerMapOn(userLocationRef.current);
+      return;
+    }
+
+    if (locatingRef.current) return;
+    locatingRef.current = true;
+    setLocating(true);
+    try {
+      // Centra con el fix rápido y vuelve a centrar cuando llega el preciso
+      await resolvePosition((loc) => {
+        setUserLocation(loc);
+        centerMapOn(loc);
+      });
+    } catch {
+      // Sin permiso o el GPS no respondió a tiempo: el mapa se queda donde está
+    } finally {
+      locatingRef.current = false;
+      setLocating(false);
+      // Los cercanos sólo se refrescan fuera del modo ruta, para no tapar la ruta
+      const loc = userLocationRef.current;
+      if (loc && routePlacesRef.current.length === 0) fetchNearby(loc.latitude, loc.longitude);
+    }
   };
 
   const focusPlace = (place) => {
@@ -245,8 +296,15 @@ export default function MapScreen({ route, navigation }) {
           </View>
         )}
         <View style={styles.rightBtns}>
-          <TouchableOpacity style={[styles.locateBtn, { backgroundColor: colors.mapSearchBg }]} onPress={centerOnUser}>
-            <Ionicons name="locate" size={20} color="#E8611A" />
+          <TouchableOpacity
+            style={[styles.locateBtn, { backgroundColor: colors.mapSearchBg }]}
+            onPress={centerOnUser}
+            disabled={locating}
+          >
+            {locating
+              ? <ActivityIndicator size="small" color="#E8611A" />
+              : <Ionicons name="locate" size={20} color="#E8611A" />
+            }
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.newRouteBtn}

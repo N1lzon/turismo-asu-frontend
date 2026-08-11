@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, Image, Modal, Pressable,
   TouchableOpacity, StyleSheet, ActivityIndicator,
@@ -9,12 +9,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LeafletMap from '../components/LeafletMap';
 import { BASE_URL, apiFetch } from '../config';
+import { fetchRoute } from '../osrm';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
 const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const USER_ROUTES_KEY = '@user_routes';
+
+// Geometrías de rutas ya resueltas, para no repegarle a OSRM en cada foco
+const geometryCache = new Map();
+
+// Todas las tarjetas de la lista miden lo mismo: la foto/mapa fija más un cuerpo
+// con alto mínimo. El mínimo tiene aire de sobra sobre las 4 líneas del caso más
+// largo (título + estado + horario + distancia) para que no dependa de las
+// métricas de fuente del dispositivo.
+const CARD_IMAGE_HEIGHT = 190;
+const CARD_BODY_MIN_HEIGHT = 96;
+const CARD_HEIGHT = CARD_IMAGE_HEIGHT + CARD_BODY_MIN_HEIGHT;
 
 function getTodayHours(place) {
   if (!place.opening_hours) return null;
@@ -58,101 +71,114 @@ function getPhoto(item) {
   return null;
 }
 
-function CardImage({ photos, placeholder }) {
-  const imgs = (photos ?? []).slice(0, 3);
-  if (imgs.length === 0) {
-    return <View style={[styles.cardImg, { backgroundColor: placeholder }]} />;
+function formatKm(meters, language) {
+  if (meters == null) return null;
+  const km = (meters / 1000).toFixed(1);
+  return `${language === 'en' ? km : km.replace('.', ',')} km`;
+}
+
+// Encuadre inicial de la preview: caja que contiene todas las paradas, con aire
+function boundsRegion(places) {
+  const lats = places.map((p) => p.lat);
+  const lngs = places.map((p) => p.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.008),
+    longitudeDelta: Math.max((maxLng - minLng) * 1.6, 0.008),
+  };
+}
+
+// Añade a la ruta el trazado y la distancia total. Si OSRM no responde se cae a
+// tramos rectos entre paradas, para que la tarjeta igual muestre algo.
+async function withGeometry(route) {
+  const places = (route.places ?? []).filter((p) => p.lat != null && p.lng != null);
+  if (places.length < 2) return route;
+
+  const key = places.map((p) => p.id).join('-');
+  if (geometryCache.has(key)) return { ...route, ...geometryCache.get(key) };
+
+  const points = places.map((p) => ({ lat: p.lat, lng: p.lng }));
+  const resolved = await fetchRoute(points) ?? {
+    geometry: points.map((p) => ({ latitude: p.lat, longitude: p.lng })),
+    distanceMeters: points.reduce(
+      (acc, p, i) => (i === 0 ? 0 : acc + haversineMeters(points[i - 1].lat, points[i - 1].lng, p.lat, p.lng)),
+      0,
+    ),
+  };
+  geometryCache.set(key, resolved);
+  return { ...route, ...resolved };
+}
+
+// Preview no interactiva del trazado de la ruta
+function RouteMapPreview({ places, geometry, placeholder }) {
+  const { isDark } = useTheme();
+  const mapRef = useRef(null);
+
+  useEffect(() => {
+    if (geometry?.length > 1) {
+      mapRef.current?.fitToCoordinates(geometry, { padding: [24, 24], animate: false });
+    }
+  }, [geometry]);
+
+  if (!(geometry?.length > 1)) {
+    return <View style={[styles.cardMap, { backgroundColor: placeholder }]} />;
   }
-  if (imgs.length === 1) {
-    return <Image source={{ uri: imgs[0] }} style={styles.cardImg} />;
-  }
-  if (imgs.length === 2) {
-    return (
-      <View style={[styles.cardImg, { flexDirection: 'row', gap: 2, overflow: 'hidden' }]}>
-        <Image source={{ uri: imgs[0] }} style={{ flex: 1, height: '100%' }} />
-        <Image source={{ uri: imgs[1] }} style={{ flex: 1, height: '100%' }} />
-      </View>
-    );
-  }
+
   return (
-    <View style={[styles.cardImg, { flexDirection: 'row', gap: 2, overflow: 'hidden' }]}>
-      <Image source={{ uri: imgs[0] }} style={{ flex: 1, height: '100%' }} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Image source={{ uri: imgs[1] }} style={{ flex: 1, width: '100%' }} />
-        <Image source={{ uri: imgs[2] }} style={{ flex: 1, width: '100%' }} />
-      </View>
+    <View style={styles.cardMap}>
+      <LeafletMap
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        initialRegion={boundsRegion(places)}
+        routeMarkers={places}
+        polylineCoords={geometry}
+        isDark={isDark}
+        interactive={false}
+      />
     </View>
   );
 }
 
-function RouteCard({ item, navigation, t }) {
+function RouteCard({ item, navigation, t, language, onDelete }) {
   const { colors } = useTheme();
-  const photos = (item.places ?? []).slice(0, 3).map((p) => p.photos?.[0]).filter(Boolean);
-  const startTime = item.start_time ? item.start_time.slice(0, 5) + ' hs.' : null;
-  const distanceText = item.distance_meters != null ? formatDistance(item.distance_meters, t) : null;
-
-  return (
-    <View style={[styles.card, { backgroundColor: colors.card }]}>
-      <CardImage photos={photos} placeholder={colors.photoPlaceholder} />
-      <View style={styles.cardBody}>
-        <View style={styles.cardInfo}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
-          {startTime && (
-            <Text style={[styles.cardStatus, { color: '#E8611A' }]}>
-              {t('starts_at', { time: startTime })}
-            </Text>
-          )}
-          {distanceText && (
-            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{distanceText} {t('to_start_point')}</Text>
-          )}
-          {item.total_places != null && (
-            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{t('places_count', { n: item.total_places })}</Text>
-          )}
-        </View>
-        <TouchableOpacity
-          style={styles.dirBtn}
-          onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
-        >
-          <Text style={styles.dirBtnText}>{t('view_on_map')}</Text>
-          <Ionicons name="map" size={13} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </View>
+  // Memoizado: si cambia la referencia, LeafletMap reinyecta los marcadores
+  const places = useMemo(
+    () => (item.places ?? []).filter((p) => p.lat != null && p.lng != null),
+    [item.places],
   );
-}
+  const stops = item.places?.length ?? item.total_places ?? 0;
+  const distanceText = formatKm(item.distanceMeters, language);
 
-function UserRouteCard({ item, navigation, t, onDelete }) {
-  const { colors } = useTheme();
-  const allPhotos = (item.places ?? []).map((p) => getPhoto(p)).filter(Boolean);
-  const photos = allPhotos.length >= 3 ? allPhotos.slice(0, 3) : allPhotos.slice(0, 1);
   return (
-    <View style={[styles.card, { backgroundColor: colors.card }]}>
-      <CardImage photos={photos} placeholder={colors.photoPlaceholder} />
-      <View style={styles.cardBody}>
-        <View style={styles.cardInfo}>
-          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
-          <Text style={[styles.cardMeta, { color: colors.textSub }]}>
-            {t('places_count', { n: item.places.length })}
+    <TouchableOpacity
+      style={[styles.card, styles.routeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+      activeOpacity={0.85}
+      onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
+    >
+      <RouteMapPreview places={places} geometry={item.geometry} placeholder={colors.photoPlaceholder} />
+      <View style={styles.routeCardBody}>
+        <View style={styles.routeCardInfo}>
+          <Text style={[styles.routeCardTitle, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
+          <Text style={[styles.routeCardMeta, { color: colors.textSub }]}>
+            {t('stops_count', { n: stops })}
+            {distanceText ? `   ·   ${distanceText}` : ''}
           </Text>
         </View>
-        <View style={{ gap: 8, alignItems: 'flex-end' }}>
+        {onDelete && (
           <TouchableOpacity
-            style={styles.dirBtn}
-            onPress={() => navigation.navigate('Mapa', { screen: 'Map', params: { routeData: item } })}
-          >
-            <Text style={styles.dirBtnText}>{t('view_on_map')}</Text>
-            <Ionicons name="map" size={13} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.dirBtn, { backgroundColor: '#E8344E' }]}
+            style={styles.routeCardAction}
             onPress={() => onDelete(item.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.dirBtnText}>{t('delete')}</Text>
-            <Ionicons name="trash-outline" size={13} color="#fff" />
+            <Ionicons name="trash-outline" size={19} color="#E8344E" />
           </TouchableOpacity>
-        </View>
+        )}
+        <Ionicons name="chevron-forward" size={20} color={colors.chevron} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -223,7 +249,7 @@ function EventCard({ item }) {
 
 export default function HomeScreen({ navigation }) {
   const { width: screenWidth } = useWindowDimensions();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { colors } = useTheme();
 
   const CATEGORIES = [
@@ -234,7 +260,7 @@ export default function HomeScreen({ navigation }) {
     { tKey: 'cat_routes',     key: 'routes',     icon: 'map-outline'        },
   ];
 
-  const { location: rawLocation } = useLocation();
+  const { location: rawLocation, ready: locationReady } = useLocation();
   const location = useMemo(
     () => ({ lat: rawLocation.latitude, lng: rawLocation.longitude }),
     [rawLocation.latitude, rawLocation.longitude],
@@ -259,13 +285,7 @@ export default function HomeScreen({ navigation }) {
         const detailed = await Promise.all(
           presets.map((r) => apiFetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json()))
         );
-        data = detailed.map((route) => {
-          const firstPlace = route.places?.[0];
-          const distance_meters = firstPlace?.lat != null
-            ? haversineMeters(location.lat, location.lng, firstPlace.lat, firstPlace.lng)
-            : null;
-          return { ...route, distance_meters };
-        });
+        data = await Promise.all(detailed.map(withGeometry));
       } else {
         const url = activeCategory === 'events'
           ? `${BASE_URL}/events`
@@ -283,12 +303,17 @@ export default function HomeScreen({ navigation }) {
     }
   }, [activeCategory, location]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  // No se pide nada hasta tener la ubicación del usuario, para no mostrar
+  // lugares calculados desde la ubicación por defecto
+  useEffect(() => {
+    if (!locationReady) return;
+    fetchItems();
+  }, [locationReady, fetchItems]);
 
-  const loadUserRoutes = useCallback(() => {
-    AsyncStorage.getItem(USER_ROUTES_KEY).then((stored) => {
-      setUserRoutes(stored ? JSON.parse(stored) : []);
-    });
+  const loadUserRoutes = useCallback(async () => {
+    const stored = await AsyncStorage.getItem(USER_ROUTES_KEY);
+    const saved = stored ? JSON.parse(stored) : [];
+    setUserRoutes(await Promise.all(saved.map(withGeometry)));
   }, []);
 
   // Cargar rutas del usuario cuando se activa la pestaña de rutas
@@ -313,7 +338,7 @@ export default function HomeScreen({ navigation }) {
 
   const isUserTab = activeCategory === 'routes' && routeSubTab === 'user';
   const listData = isUserTab ? userRoutes : items;
-  const showLoading = loading && !isUserTab;
+  const showLoading = (loading || !locationReady) && !isUserTab;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]} edges={['top']}>
@@ -378,9 +403,13 @@ export default function HomeScreen({ navigation }) {
               activeCategory === 'events'
                 ? <EventCard item={item} />
                 : activeCategory === 'routes'
-                  ? (isUserTab
-                      ? <UserRouteCard item={item} navigation={navigation} t={t} onDelete={deleteUserRoute} />
-                      : <RouteCard item={item} navigation={navigation} t={t} />)
+                  ? <RouteCard
+                      item={item}
+                      navigation={navigation}
+                      t={t}
+                      language={language}
+                      onDelete={isUserTab ? deleteUserRoute : undefined}
+                    />
                   : <PlaceCard item={item} onPress={() => navigation.navigate('PlaceDetail', { place: item })} navigation={navigation} t={t} />
             }
             contentContainerStyle={styles.list}
@@ -496,14 +525,35 @@ const styles = StyleSheet.create({
   },
   cardImg: {
     width: '100%',
-    height: 190,
+    height: CARD_IMAGE_HEIGHT,
   },
+  routeCard: {
+    height: CARD_HEIGHT,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  // El mapa toma el alto que le deja el cuerpo, así la tarjeta cierra en CARD_HEIGHT
+  cardMap: {
+    width: '100%',
+    flex: 1,
+  },
+  routeCardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  routeCardInfo: { flex: 1 },
+  routeCardTitle: { fontSize: 16, fontWeight: '600' },
+  routeCardMeta: { fontSize: 12.5, marginTop: 3 },
+  routeCardAction: { padding: 2 },
   cardBody: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     padding: 10,
     paddingTop: 8,
+    minHeight: CARD_BODY_MIN_HEIGHT,
   },
   cardInfo: { flex: 1, marginRight: 10 },
   cardTitle: { fontSize: 17, fontWeight: '600' },

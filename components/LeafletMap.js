@@ -7,10 +7,16 @@ function regionToZoom(region) {
   return Math.max(1, Math.min(18, Math.round(Math.log2(360 / region.latitudeDelta))));
 }
 
-function buildHtml(isDark, lat, lng, zoom) {
+function buildHtml(isDark, lat, lng, zoom, interactive) {
   const tileUrl = isDark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+  // En modo preview (tarjetas) el mapa es sólo una imagen: sin gestos, para que
+  // el scroll de la lista y el tap de la tarjeta no se los coma el mapa
+  const mapOpts = interactive
+    ? ''
+    : ',dragging:false,touchZoom:false,doubleClickZoom:false,scrollWheelZoom:false,boxZoom:false,keyboard:false,tap:false';
 
   return `<!DOCTYPE html>
 <html>
@@ -26,7 +32,7 @@ html,body,#map{width:100%;height:100%;overflow:hidden}
 <div id="map"></div>
 <script>${LEAFLET_JS}</script>
 <script>
-var map=L.map('map',{zoomControl:false,attributionControl:false});
+var map=L.map('map',{zoomControl:false,attributionControl:false${mapOpts}});
 L.tileLayer('${tileUrl}',{maxZoom:19}).addTo(map);
 map.setView([${lat},${lng}],${zoom});
 
@@ -61,7 +67,7 @@ function handleMessage(e){
   } else if(d.type==='fitToCoordinates'){
     if(d.coords&&d.coords.length>0){
       var bounds=d.coords.map(function(c){return[c.latitude,c.longitude];});
-      map.fitBounds(bounds,{padding:[80,50],animate:true});
+      map.fitBounds(bounds,{padding:d.padding||[80,50],animate:d.animate!==false});
     }
   } else if(d.type==='setMarkers'){
     Object.values(markersMap).forEach(function(m){m.remove();});
@@ -96,7 +102,10 @@ map.whenReady(function(){postRN({type:'ready'});});
 }
 
 const LeafletMap = forwardRef(function LeafletMap(
-  { style, initialRegion, markers = [], routeMarkers = [], polylineCoords = [], userLocation, isDark, onMarkerPress },
+  {
+    style, initialRegion, markers = [], routeMarkers = [], polylineCoords = [],
+    userLocation, isDark, onMarkerPress, interactive = true,
+  },
   ref,
 ) {
   const webRef = useRef(null);
@@ -143,7 +152,8 @@ const LeafletMap = forwardRef(function LeafletMap(
 
   useImperativeHandle(ref, () => ({
     animateToRegion: (region) => send({ type: 'animateToRegion', region }),
-    fitToCoordinates: (coords) => send({ type: 'fitToCoordinates', coords }),
+    fitToCoordinates: (coords, options) =>
+      send({ type: 'fitToCoordinates', coords, padding: options?.padding, animate: options?.animate }),
     invalidateSize: () => {
       send({ type: 'invalidateSize' });
       // After focus, re-sync all state with a short delay so that any
@@ -198,7 +208,7 @@ const LeafletMap = forwardRef(function LeafletMap(
   }, []);
 
   const html = useMemo(
-    () => buildHtml(isDark, initialRegion.latitude, initialRegion.longitude, regionToZoom(initialRegion)),
+    () => buildHtml(isDark, initialRegion.latitude, initialRegion.longitude, regionToZoom(initialRegion), interactive),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -212,6 +222,9 @@ const LeafletMap = forwardRef(function LeafletMap(
       javaScriptEnabled
       domStorageEnabled
       onMessage={handleWebMessage}
+      scrollEnabled={interactive}
+      // Sin interacción los toques deben llegar a la tarjeta que hay debajo
+      pointerEvents={interactive ? 'auto' : 'none'}
     />
   );
 });

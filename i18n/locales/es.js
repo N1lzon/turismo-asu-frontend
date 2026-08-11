@@ -24,6 +24,7 @@ export default {
   starts_at: 'Inicia a las {{time}}',
   to_start_point: 'al punto de inicio',
   places_count: '{{n}} lugares',
+  stops_count: '{{n}} paradas',
   view_on_map: 'Ver en mapa',
 
   // Distancia
