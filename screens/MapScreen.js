@@ -4,6 +4,7 @@ import {
   StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
 import LeafletMap from '../components/LeafletMap';
+import RouteSheet, { SHEET_COLLAPSED_HEIGHT } from '../components/RouteSheet';
 import { useLocation, resolvePosition } from '../location';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -251,6 +252,15 @@ export default function MapScreen({ route, navigation }) {
     if (place) focusPlace(place);
   }, [places]);
 
+  const openRouteEditor = () => navigation.navigate('RouteEditor', {
+    initialPlaces: routePlaces,
+    ...(currentRouteData && !currentRouteData.is_preset
+      ? { existingRouteId: currentRouteData.id, existingRouteName: currentRouteData.name }
+      : {}),
+  });
+
+  const showingRoute = routePlaces.length > 0;
+
   return (
     <View style={styles.container}>
       <LeafletMap
@@ -282,53 +292,50 @@ export default function MapScreen({ route, navigation }) {
         </View>
       )}
 
-      <View style={styles.bottomRow}>
-        {routePlaces.length > 0 && (
-          <View style={styles.leftBtns}>
-            <TouchableOpacity style={styles.openInBtn} onPress={openInExternalApp}>
-              <Ionicons name="open-outline" size={15} color="#fff" />
-              <Text style={styles.openInBtnText}>{t('open_in')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.clearRouteBtn} onPress={clearRoute}>
-              <Ionicons name="close" size={15} color="#fff" />
-              <Text style={styles.clearRouteBtnText}>{t('clear_route')}</Text>
+      {showingRoute ? (
+        <>
+          {/* El botón de centrar queda por encima del panel plegado */}
+          <View style={[styles.locateFloating, { bottom: SHEET_COLLAPSED_HEIGHT + 16 }]}>
+            <TouchableOpacity
+              style={[styles.locateBtn, { backgroundColor: colors.mapSearchBg }]}
+              onPress={centerOnUser}
+              disabled={locating}
+            >
+              {locating
+                ? <ActivityIndicator size="small" color="#E8611A" />
+                : <Ionicons name="locate" size={20} color="#E8611A" />
+              }
             </TouchableOpacity>
           </View>
-        )}
-        <View style={styles.rightBtns}>
-          <TouchableOpacity
-            style={[styles.locateBtn, { backgroundColor: colors.mapSearchBg }]}
-            onPress={centerOnUser}
-            disabled={locating}
-          >
-            {locating
-              ? <ActivityIndicator size="small" color="#E8611A" />
-              : <Ionicons name="locate" size={20} color="#E8611A" />
-            }
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.newRouteBtn}
-            onPress={() => navigation.navigate('RouteEditor', {
-              initialPlaces: routePlaces,
-              ...(currentRouteData && !currentRouteData.is_preset
-                ? { existingRouteId: currentRouteData.id, existingRouteName: currentRouteData.name }
-                : {}),
-            })}
-          >
-            {routePlaces.length > 0 ? (
-              <>
-                <Ionicons name="pencil" size={16} color="#fff" />
-                <Text style={styles.newRouteBtnText}>{t('edit')}</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={styles.newRouteBtnText}>{t('new_route')}</Text>
-              </>
-            )}
-          </TouchableOpacity>
+
+          <RouteSheet
+            title={currentRouteData?.name ?? routePlaces[0]?.name ?? t('new_route')}
+            places={routePlaces}
+            onEdit={openRouteEditor}
+            onClear={clearRoute}
+            onOpenExternal={openInExternalApp}
+          />
+        </>
+      ) : (
+        <View style={styles.bottomRow}>
+          <View style={styles.rightBtns}>
+            <TouchableOpacity
+              style={[styles.locateBtn, { backgroundColor: colors.mapSearchBg }]}
+              onPress={centerOnUser}
+              disabled={locating}
+            >
+              {locating
+                ? <ActivityIndicator size="small" color="#E8611A" />
+                : <Ionicons name="locate" size={20} color="#E8611A" />
+              }
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.newRouteBtn} onPress={openRouteEditor}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.newRouteBtnText}>{t('new_route')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -365,39 +372,12 @@ const styles = StyleSheet.create({
     padding: 8,
     elevation: 4,
   },
-  routeMarker: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#E8611A',
-    borderWidth: 2, borderColor: '#fff',
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25, shadowRadius: 3,
-    elevation: 4,
-  },
-  routeMarkerText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  leftBtns: { alignItems: 'flex-start', gap: 8 },
-  openInBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#444', borderRadius: 20,
-    paddingVertical: 10, paddingHorizontal: 16, gap: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
-  },
-  openInBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
   bottomRow: {
     position: 'absolute', bottom: 24, left: 20, right: 20,
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
   },
   rightBtns: { alignItems: 'flex-end', gap: 10, marginLeft: 'auto' },
-  clearRouteBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#555', borderRadius: 20,
-    paddingVertical: 10, paddingHorizontal: 16, gap: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
-  },
-  clearRouteBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
+  locateFloating: { position: 'absolute', right: 20 },
   locateBtn: {
     width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',

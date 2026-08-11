@@ -52,6 +52,7 @@ export default {
   open_in: 'Open in…',
   clear_route: 'Clear route',
   edit: 'Edit',
+  edit_route: 'Edit route',
   new_route: 'New route',
 
   // Options
