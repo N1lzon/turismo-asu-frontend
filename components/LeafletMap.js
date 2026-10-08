@@ -22,6 +22,22 @@ export function boundsRegion(points) {
   };
 }
 
+// Marcadores tal como los espera el WebView. Los lugares sólo llevan popup si la
+// pantalla no gestiona el toque por su cuenta (p. ej. con una tarjeta propia).
+function buildMarkers(markers, routeMarkers, withPlacePopups) {
+  return [
+    ...markers
+      .filter((m) => m.lat != null && m.lng != null)
+      .map((m) => ({
+        id: String(m.id), lat: m.lat, lng: m.lng, color: '#E8611A',
+        ...(withPlacePopups ? { title: m.name, description: m.address } : {}),
+      })),
+    ...routeMarkers
+      .filter((m) => m.lat != null && m.lng != null)
+      .map((m, i) => ({ id: `r${m.id ?? i}_${i}`, lat: m.lat, lng: m.lng, title: `${i + 1}. ${m.name}`, label: i + 1 })),
+  ];
+}
+
 function buildHtml(isDark, lat, lng, zoom, interactive) {
   const tileUrl = isDark
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
@@ -108,6 +124,8 @@ function handleMessage(e){
   }
 }
 
+map.on('click',function(){postRN({type:'mapPress'});});
+
 document.addEventListener('message',handleMessage);
 window.addEventListener('message',handleMessage);
 map.whenReady(function(){postRN({type:'ready'});});
@@ -119,7 +137,7 @@ map.whenReady(function(){postRN({type:'ready'});});
 const LeafletMap = forwardRef(function LeafletMap(
   {
     style, initialRegion, markers = [], routeMarkers = [], polylineCoords = [],
-    userLocation, isDark, onMarkerPress, interactive = true,
+    userLocation, isDark, onMarkerPress, onMapPress, interactive = true,
   },
   ref,
 ) {
@@ -133,11 +151,15 @@ const LeafletMap = forwardRef(function LeafletMap(
   const polylineCoordsRef = useRef(polylineCoords);
   const userLocationPropRef = useRef(userLocation);
   const syncTimerRef = useRef(null);
+  const onMarkerPressRef = useRef(onMarkerPress);
+  const onMapPressRef = useRef(onMapPress);
 
   markersRef.current = markers;
   routeMarkersRef.current = routeMarkers;
   polylineCoordsRef.current = polylineCoords;
   userLocationPropRef.current = userLocation;
+  onMarkerPressRef.current = onMarkerPress;
+  onMapPressRef.current = onMapPress;
 
   const send = useCallback((msg) => {
     const js = `handleMessage({data:${JSON.stringify(JSON.stringify(msg))}});true;`;
@@ -150,15 +172,10 @@ const LeafletMap = forwardRef(function LeafletMap(
 
   // Re-send all current state to WebView (used to recover from lost messages)
   const syncAll = useCallback(() => {
-    const allMarkers = [
-      ...markersRef.current
-        .filter((m) => m.lat != null && m.lng != null)
-        .map((m) => ({ id: String(m.id), lat: m.lat, lng: m.lng, title: m.name, description: m.address, color: '#E8611A' })),
-      ...routeMarkersRef.current
-        .filter((m) => m.lat != null && m.lng != null)
-        .map((m, i) => ({ id: `r${m.id ?? i}_${i}`, lat: m.lat, lng: m.lng, title: `${i + 1}. ${m.name}`, label: i + 1 })),
-    ];
-    send({ type: 'setMarkers', markers: allMarkers });
+    send({
+      type: 'setMarkers',
+      markers: buildMarkers(markersRef.current, routeMarkersRef.current, !onMarkerPressRef.current),
+    });
     send({ type: 'setPolyline', coords: polylineCoordsRef.current });
     if (userLocationPropRef.current) {
       send({ type: 'setUserLocation', lat: userLocationPropRef.current.latitude, lng: userLocationPropRef.current.longitude });
@@ -184,17 +201,10 @@ const LeafletMap = forwardRef(function LeafletMap(
   // Cleanup pending sync timer on unmount
   useEffect(() => () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); }, []);
 
+  const hasMarkerHandler = !!onMarkerPress;
   useEffect(() => {
-    const all = [
-      ...markers
-        .filter((m) => m.lat != null && m.lng != null)
-        .map((m) => ({ id: String(m.id), lat: m.lat, lng: m.lng, title: m.name, description: m.address, color: '#E8611A' })),
-      ...routeMarkers
-        .filter((m) => m.lat != null && m.lng != null)
-        .map((m, i) => ({ id: `r${m.id ?? i}_${i}`, lat: m.lat, lng: m.lng, title: `${i + 1}. ${m.name}`, label: i + 1 })),
-    ];
-    send({ type: 'setMarkers', markers: all });
-  }, [markers, routeMarkers, send]);
+    send({ type: 'setMarkers', markers: buildMarkers(markers, routeMarkers, !hasMarkerHandler) });
+  }, [markers, routeMarkers, hasMarkerHandler, send]);
 
   useEffect(() => {
     send({ type: 'setPolyline', coords: polylineCoords });
@@ -206,9 +216,6 @@ const LeafletMap = forwardRef(function LeafletMap(
     }
   }, [userLocation, send]);
 
-  const onMarkerPressRef = useRef(onMarkerPress);
-  onMarkerPressRef.current = onMarkerPress;
-
   const handleWebMessage = useCallback((e) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
@@ -218,6 +225,8 @@ const LeafletMap = forwardRef(function LeafletMap(
         queue.current = [];
       } else if (data.type === 'markerPress') {
         onMarkerPressRef.current?.(data.id);
+      } else if (data.type === 'mapPress') {
+        onMapPressRef.current?.();
       }
     } catch {}
   }, []);

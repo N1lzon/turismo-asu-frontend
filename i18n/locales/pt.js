@@ -78,10 +78,37 @@ export default {
   clear_data_title: 'Limpar dados',
   clear_data_msg: 'Todas as rotas salvas serão excluídas e o idioma e o tema serão redefinidos. Esta ação não pode ser desfeita.',
   clear_data_confirm: 'Limpar',
+  data_cleared: 'Os dados foram limpos.',
+  data_clear_error: 'Não foi possível limpar os dados. Tente novamente.',
 
   // Sobre
   about_description: 'App mobile de turismo para Assunção, Paraguai.',
   about_stack: 'React Native · Expo',
   about_devs: 'Desenvolvedores',
   about_view_github: 'Ver no GitHub',
+
+  // Horários
+  open_24h: 'Aberto 24 horas',
+  hours_range: '{{h}}',
+
+  // Erros
+  error_title: 'Não foi possível carregar as informações',
+  error_subtitle: 'Verifique sua conexão com a internet e tente novamente.',
+  retry: 'Tentar novamente',
+  open_external_error: 'Não foi possível abrir o app de mapas.',
+
+  // Pesquisa
+  search_min_chars: 'Digite pelo menos 2 letras para pesquisar.',
+
+  // Tema
+  theme_system: 'Padrão do sistema',
+
+  // Mapa
+  view_details: 'Ver detalhes',
+
+  // Eventos
+  today: 'Hoje',
+  tomorrow: 'Amanhã',
+  no_events: 'Não há eventos próximos.',
+  description_title: 'Descrição',
 };

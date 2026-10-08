@@ -1,54 +1,25 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, FlatList, Image,
   TouchableOpacity, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BASE_URL, apiFetch } from '../config';
+import { usePlaceSearch } from '../search';
+import { getPhoto, formatDistance } from '../place';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
-
-function formatDistance(meters, t) {
-  if (meters == null) return '';
-  return meters < 1000
-    ? t('dist_meters', { n: Math.round(meters) })
-    : t('dist_km', { n: (meters / 1000).toFixed(1) });
-}
-
-function getPhoto(item) {
-  if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
-  if (typeof item.photo === 'string') return item.photo;
-  return null;
-}
 
 export default function SearchScreen({ navigation }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const [query, setQuery] = useState('');
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const { query, setQuery, results: items, loading, searched, tooShort, clear } = usePlaceSearch();
   const inputRef = useRef(null);
 
   useEffect(() => {
     const timeout = setTimeout(() => inputRef.current?.focus(), 50);
     return () => clearTimeout(timeout);
   }, []);
-
-  const handleChange = async (text) => {
-    setQuery(text);
-    if (!text.trim()) { setItems([]); return; }
-    setLoading(true);
-    try {
-      const res = await apiFetch(`${BASE_URL}/places/search?q=${encodeURIComponent(text.trim())}`);
-      const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const renderItem = ({ item }) => {
     const photo = getPhoto(item);
@@ -84,18 +55,21 @@ export default function SearchScreen({ navigation }) {
           placeholder={t('search_placeholder')}
           placeholderTextColor={colors.placeholder}
           value={query}
-          onChangeText={handleChange}
+          onChangeText={setQuery}
           returnKeyType="search"
           autoCorrect={false}
         />
+        {loading && items.length > 0 && (
+          <ActivityIndicator size="small" color="#E8611A" style={styles.headerSpinner} />
+        )}
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); setItems([]); }}>
+          <TouchableOpacity onPress={clear} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="close-circle" size={18} color={colors.textMuted} />
           </TouchableOpacity>
         )}
       </View>
 
-      {loading
+      {loading && items.length === 0
         ? <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#E8611A" />
         : (
           <FlatList
@@ -105,9 +79,11 @@ export default function SearchScreen({ navigation }) {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.list}
             ListEmptyComponent={
-              query.trim()
-                ? <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t('no_results_short')}</Text>
-                : null
+              query.trim() && tooShort
+                ? <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t('search_min_chars')}</Text>
+                : searched
+                  ? <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t('no_results_short')}</Text>
+                  : null
             }
           />
         )
@@ -124,6 +100,7 @@ const styles = StyleSheet.create({
     borderRadius: 24, paddingHorizontal: 12, height: 44,
   },
   backBtn: { marginRight: 6 },
+  headerSpinner: { marginRight: 8 },
   input: { flex: 1, fontSize: 15 },
   list: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 20 },
   item: {

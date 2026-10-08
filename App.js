@@ -17,6 +17,7 @@ import OptionsScreen from './screens/OptionsScreen';
 import SearchScreen from './screens/SearchScreen';
 import PlaceDetailScreen from './screens/PlaceDetailScreen';
 import RouteDetailScreen from './screens/RouteDetailScreen';
+import EventDetailScreen from './screens/EventDetailScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -34,6 +35,7 @@ function HomeStack() {
       <Stack.Screen name="Search" component={SearchScreen} options={{ animation: 'fade' }} />
       <Stack.Screen name="PlaceDetail" component={PlaceDetailScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="RouteDetail" component={RouteDetailScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="EventDetail" component={EventDetailScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }

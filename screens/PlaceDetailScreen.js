@@ -4,41 +4,9 @@ import {
 import LeafletMap from '../components/LeafletMap';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getPhoto, isOpen, formatTodayHours, formatDistance } from '../place';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
-
-const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-
-function getTodayHours(place) {
-  if (!place.opening_hours) return null;
-  const dayKey = DAYS_ES[new Date().getDay()];
-  return place.opening_hours[dayKey] ?? null;
-}
-
-function isOpen(place) {
-  const hours = getTodayHours(place);
-  if (!hours || hours === 'Cerrado') return hours === 'Cerrado' ? false : null;
-  const parts = hours.split(' - ');
-  if (parts.length !== 2) return null;
-  const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const [oh, om] = parts[0].split(':').map(Number);
-  const [ch, cm] = parts[1].split(':').map(Number);
-  return minutes >= oh * 60 + om && minutes < ch * 60 + cm;
-}
-
-function formatDistance(meters, t) {
-  if (meters == null) return null;
-  return meters < 1000
-    ? t('dist_meters', { n: Math.round(meters) })
-    : t('dist_km', { n: (meters / 1000).toFixed(1) });
-}
-
-function getPhoto(item) {
-  if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
-  if (typeof item.photo === 'string') return item.photo;
-  return null;
-}
 
 export default function PlaceDetailScreen({ route, navigation }) {
   const { place } = route.params;
@@ -47,7 +15,7 @@ export default function PlaceDetailScreen({ route, navigation }) {
 
   const photo = getPhoto(place);
   const open = isOpen(place);
-  const todayHours = getTodayHours(place);
+  const todayHours = formatTodayHours(place, t);
   const distance = formatDistance(place.distance_meters, t);
   const hasMap = place.lat != null && place.lng != null;
 
@@ -72,8 +40,8 @@ export default function PlaceDetailScreen({ route, navigation }) {
             {open ? t('open_status') : t('closed_status')}
           </Text>
         )}
-        {todayHours && todayHours !== 'Cerrado' && (
-          <Text style={[styles.metaText, { color: colors.textSub }]}>{todayHours} hs.</Text>
+        {todayHours && (
+          <Text style={[styles.metaText, { color: colors.textSub }]}>{todayHours}</Text>
         )}
         {distance && (
           <Text style={[styles.metaText, { color: colors.textSub }]}>{distance}</Text>

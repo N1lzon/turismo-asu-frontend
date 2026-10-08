@@ -1,0 +1,65 @@
+MEJORAS PENDIENTES — Jahapa (frontend)
+======================================
+App solo Android: se ignoran problemas específicos de iOS.
+Marcar con [x] lo que se vaya haciendo.
+
+SECCIÓN 1 — Bugs visibles en la demo
+------------------------------------
+[x] "Borrar datos" no borraba las rutas guardadas (y reloadAsync sin try/catch)
+[x] Tema del sistema nunca se aplicaba (userInterfaceStyle: light) + opción "Sistema"
+[x] Tocar un marcador del mapa no mostraba nada útil -> tarjeta inferior
+[x] Horarios: "24 horas" y horarios que cruzan medianoche mal calculados
+[x] Errores técnicos crudos en Inicio -> mensaje amigable + Reintentar + pull-to-refresh
+[x] Búsqueda sin debounce, con respuestas viejas pisando nuevas y 422 con 1 carácter
+[x] Editor de rutas: título fijo, mapa desactualizado tras guardar, "Ver en mapa"
+    renombraba la ruta, guardado buscaba por nombre
+[x] "Abrir en…" sin manejo de error
+[x] Eventos: fecha cruda, eventos pasados, sin descripción, tarjeta no tocable
+
+SECCIÓN 2 — Usabilidad de alto impacto
+--------------------------------------
+[ ] Detalle de lugar completo: GET /places/{id} -> rating, llamar, web, compartir,
+    horario semanal, galería de fotos. ScrollView con hero + back flotante.
+    (desde la búsqueda hoy no hay horario porque /places/search no lo trae)
+[ ] Ruta a un solo destino: mostrar distancia + tiempo estimado (OSRM duration) y
+    "Abrir en Google Maps" como acción principal; ocultar "Editar ruta"
+[ ] Detalle de ruta: mostrar description y start_time, paradas tocables
+    (-> PlaceDetail), "Copiar a mis rutas" para predefinidas
+[ ] Ubicación: aviso "Ubicación desactivada · Activar" si se niega el permiso;
+    evitar spinner de hasta 8 s en el primer arranque
+[ ] Mapa: botón "Buscar en esta zona" (radio actual 500 m, no recarga al mover);
+    marcadores por categoría + chips de filtro
+[ ] Editor de rutas: ayuda "mantén y arrastra / desliza para borrar", deshacer al
+    borrar, confirmar al salir con cambios, toast al guardar
+[ ] Unificar SearchScreen y MapSearchScreen (una muestra dirección, la otra no;
+    SearchScreen intenta mostrar distancia que el endpoint no devuelve)
+
+SECCIÓN 3 — Pulido visual
+-------------------------
+[ ] Skeleton loaders en lugar de ActivityIndicator
+[ ] expo-image (caché, fade-in, placeholder)
+[ ] Previews de rutas: reemplazar WebView por miniatura SVG (rendimiento)
+[ ] Sistema de diseño: colors.primary (hoy #E8611A hardcodeado ~40 veces),
+    escala tipográfica, fuente propia (Inter/Poppins), botón #3A3A3A en oscuro
+[ ] Componente <Dialog> compartido (modal copiado 5 veces)
+[ ] Formato de distancias unificado ("A 3.2km." vs "3,2 km")
+[ ] Opciones: valor actual en cada fila + íconos, versión desde expo-constants
+[ ] "Acerca de": título "Jahapa" en vez del nombre del repo, botón "Cerrar"
+[ ] Hápticos (expo-haptics) y toasts de confirmación
+[ ] Textos sin traducir restantes
+
+SECCIÓN 4 — Accesibilidad
+-------------------------
+[ ] accessibilityLabel en botones solo-ícono (volver, centrar, ×, papelera)
+[ ] hitSlop en objetivos chicos (× de limpiar búsqueda)
+[ ] Alturas fijas que se rompen con fuente grande del sistema
+[ ] Contraste de textMuted (#aaa sobre blanco)
+
+SECCIÓN 5 — Riesgos para la presentación
+----------------------------------------
+[ ] OSRM público y tiles de tile.openstreetmap.org: límites de uso
+[ ] MapScreen: routeToDestination/loadRouteOnMap sin timeout ni fallback de osrm.js
+[ ] Atribución "© OpenStreetMap" desactivada en LeafletMap (licencia)
+[ ] Popups de Leaflet sin escapar HTML (nombres con & o <)
+[ ] Plugin expo-location en app.json con texto del permiso
+[ ] Caché offline de los últimos resultados + aviso "Sin conexión"

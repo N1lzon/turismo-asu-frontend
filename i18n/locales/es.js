@@ -78,10 +78,37 @@ export default {
   clear_data_title: 'Borrar datos',
   clear_data_msg: 'Se borrarán todas las rutas guardadas y se restablecerán el idioma y el tema. Esta acción no se puede deshacer.',
   clear_data_confirm: 'Borrar',
+  data_cleared: 'Los datos se borraron correctamente.',
+  data_clear_error: 'No se pudieron borrar los datos. Inténtalo de nuevo.',
 
   // Acerca de
   about_description: 'App móvil de turismo para Asunción, Paraguay.',
   about_stack: 'React Native · Expo',
   about_devs: 'Desarrolladores',
   about_view_github: 'Ver en GitHub',
+
+  // Horarios
+  open_24h: 'Abierto 24 horas',
+  hours_range: '{{h}} hs.',
+
+  // Errores
+  error_title: 'No pudimos cargar la información',
+  error_subtitle: 'Revisa tu conexión a internet e inténtalo de nuevo.',
+  retry: 'Reintentar',
+  open_external_error: 'No se pudo abrir la aplicación de mapas.',
+
+  // Búsqueda
+  search_min_chars: 'Escribe al menos 2 letras para buscar.',
+
+  // Tema
+  theme_system: 'Predeterminado del sistema',
+
+  // Mapa
+  view_details: 'Ver detalle',
+
+  // Eventos
+  today: 'Hoy',
+  tomorrow: 'Mañana',
+  no_events: 'No hay eventos próximos.',
+  description_title: 'Descripción',
 };

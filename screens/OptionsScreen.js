@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import {
   View, Text, Image, StyleSheet,
-  TouchableOpacity, Modal, Pressable, Linking,
+  TouchableOpacity, Modal, Pressable, Linking, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Updates from 'expo-updates';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
@@ -17,6 +17,9 @@ const DEVS = [
 
 const LOGO = require('../assets/logo.png');
 
+// Misma clave que usan HomeScreen y RouteEditorScreen para las rutas del usuario
+const USER_ROUTES_KEY = '@user_routes';
+
 const LANGUAGES = [
   { code: 'es', nativeName: 'Español' },
   { code: 'en', nativeName: 'English' },
@@ -25,7 +28,7 @@ const LANGUAGES = [
 
 export default function OptionsScreen() {
   const { t, language, setLanguage, resetLanguage } = useTranslation();
-  const { colors, isDark, setTheme, resetTheme } = useTheme();
+  const { colors, themeMode, setThemeMode, resetTheme } = useTheme();
   const [langModalVisible,  setLangModalVisible]  = useState(false);
   const [themeModalVisible, setThemeModalVisible] = useState(false);
   const [aboutModalVisible, setAboutModalVisible] = useState(false);
@@ -33,8 +36,9 @@ export default function OptionsScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const THEMES = [
-    { dark: false, label: t('theme_light'), icon: 'sunny-outline' },
-    { dark: true,  label: t('theme_dark'),  icon: 'moon-outline'  },
+    { mode: 'system', label: t('theme_system'), icon: 'phone-portrait-outline' },
+    { mode: 'light',  label: t('theme_light'),  icon: 'sunny-outline'          },
+    { mode: 'dark',   label: t('theme_dark'),   icon: 'moon-outline'           },
   ];
 
   const OPTIONS = [
@@ -44,10 +48,20 @@ export default function OptionsScreen() {
     { key: 'about',    label: t('opt_about'),       onPress: () => setAboutModalVisible(true) },
   ];
 
+  // No hace falta reiniciar la app: idioma y tema se aplican al instante y la
+  // lista de "Mis rutas" se vuelve a leer al enfocar Inicio
   async function handleClearConfirm() {
     setClearModalVisible(false);
-    await Promise.all([resetLanguage(), resetTheme()]);
-    await Updates.reloadAsync();
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem(USER_ROUTES_KEY),
+        resetLanguage(),
+        resetTheme(),
+      ]);
+      Alert.alert(t('data_cleared'));
+    } catch {
+      Alert.alert(t('data_clear_error'));
+    }
   }
 
 return (
@@ -126,12 +140,12 @@ return (
           <Pressable style={styles.modalBox} onPress={() => {}}>
             <Text style={styles.modalTitle}>{t('select_theme')}</Text>
             {THEMES.map((item) => {
-              const selected = isDark === item.dark;
+              const selected = themeMode === item.mode;
               return (
                 <TouchableOpacity
-                  key={String(item.dark)}
+                  key={item.mode}
                   style={styles.modalItem}
-                  onPress={() => { setTheme(item.dark); setThemeModalVisible(false); }}
+                  onPress={() => { setThemeMode(item.mode); setThemeModalVisible(false); }}
                   activeOpacity={0.7}
                 >
                   <View style={styles.rowLeft}>

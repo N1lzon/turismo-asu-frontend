@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, Image, Modal, Pressable,
   TouchableOpacity, StyleSheet, ActivityIndicator,
-  useWindowDimensions,
+  useWindowDimensions, RefreshControl,
 } from 'react-native';
 import { useLocation } from '../location';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,10 +13,13 @@ import LeafletMap, { boundsRegion } from '../components/LeafletMap';
 import { BASE_URL, apiFetch } from '../config';
 import { fetchRouteOrStraight } from '../osrm';
 import { formatKm } from '../format';
+import {
+  getPhoto, isOpen, formatTodayHours, formatDistance,
+  isUpcomingEvent, formatEventDate, formatEventTime,
+} from '../place';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
-const DAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const USER_ROUTES_KEY = '@user_routes';
 
 // Geometrías de rutas ya resueltas, para no repegarle a OSRM en cada foco
@@ -30,35 +33,11 @@ const CARD_IMAGE_HEIGHT = 190;
 const CARD_BODY_MIN_HEIGHT = 96;
 const CARD_HEIGHT = CARD_IMAGE_HEIGHT + CARD_BODY_MIN_HEIGHT;
 
-function getTodayHours(place) {
-  if (!place.opening_hours) return null;
-  const dayKey = DAYS_ES[new Date().getDay()];
-  return place.opening_hours[dayKey] ?? null;
-}
-
-function isOpen(place) {
-  const hours = getTodayHours(place);
-  if (!hours || hours === 'Cerrado') return hours === 'Cerrado' ? false : null;
-  const parts = hours.split(' - ');
-  if (parts.length !== 2) return null;
-  const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  const [oh, om] = parts[0].split(':').map(Number);
-  const [ch, cm] = parts[1].split(':').map(Number);
-  return minutes >= oh * 60 + om && minutes < ch * 60 + cm;
-}
-
-function formatDistance(meters, t) {
-  if (meters == null) return '';
-  return meters < 1000
-    ? t('dist_meters', { n: Math.round(meters) })
-    : t('dist_km', { n: (meters / 1000).toFixed(1) });
-}
-
-function getPhoto(item) {
-  if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
-  if (typeof item.photo === 'string') return item.photo;
-  return null;
+// GET que falla con cualquier respuesta no exitosa o que no sea JSON
+async function fetchJson(url) {
+  const res = await apiFetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 // Añade a la ruta su trazado, distancia total y tramos
@@ -174,7 +153,7 @@ function UserRoutesEmpty({ navigation, t }) {
 function PlaceCard({ item, onPress, navigation, t }) {
   const { colors } = useTheme();
   const open = isOpen(item);
-  const todayHours = getTodayHours(item);
+  const todayHours = formatTodayHours(item, t);
   const photo = getPhoto(item);
 
   return (
@@ -191,8 +170,8 @@ function PlaceCard({ item, onPress, navigation, t }) {
               {open ? t('open_status') : t('closed_status')}
             </Text>
           )}
-          {todayHours && todayHours !== 'Cerrado' && (
-            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{todayHours} hs.</Text>
+          {todayHours && (
+            <Text style={[styles.cardMeta, { color: colors.textSub }]}>{todayHours}</Text>
           )}
           {item.distance_meters != null && (
             <Text style={[styles.cardMeta, { color: colors.textSub }]}>{formatDistance(item.distance_meters, t)}</Text>
@@ -210,12 +189,13 @@ function PlaceCard({ item, onPress, navigation, t }) {
   );
 }
 
-function EventCard({ item }) {
+function EventCard({ item, onPress, t, language }) {
   const { colors } = useTheme();
   const photo = getPhoto(item);
+  const time = formatEventTime(item, t);
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card }]}>
+    <TouchableOpacity style={[styles.card, { backgroundColor: colors.card }]} onPress={onPress} activeOpacity={0.85}>
       {photo
         ? <Image source={{ uri: photo }} style={styles.cardImg} />
         : <View style={[styles.cardImg, { backgroundColor: colors.photoPlaceholder }]} />
@@ -223,15 +203,37 @@ function EventCard({ item }) {
       <View style={styles.cardBody}>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>{item.name}</Text>
-          <Text style={[styles.cardStatus, { color: '#E8611A' }]}>{item.date}</Text>
-          {item.start_time && item.end_time && (
-            <Text style={[styles.cardMeta, { color: colors.textSub }]}>
-              {item.start_time.slice(0, 5)} hs. – {item.end_time.slice(0, 5)} hs.
-            </Text>
+          <Text style={[styles.cardStatus, { color: '#E8611A' }]}>
+            {formatEventDate(item.date, t, language)}
+            {time ? `  ·  ${time}` : ''}
+          </Text>
+          {item.description ? (
+            <Text style={[styles.cardMeta, { color: colors.textSub }]} numberOfLines={2}>{item.description}</Text>
+          ) : null}
+          {item.address && (
+            <Text style={[styles.cardMeta, { color: colors.textSub }]} numberOfLines={1}>{item.address}</Text>
           )}
-          {item.address && <Text style={[styles.cardMeta, { color: colors.textSub }]}>{item.address}</Text>}
         </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.chevron} />
       </View>
+    </TouchableOpacity>
+  );
+}
+
+// Estado de error de la lista: mensaje entendible y opción de reintentar
+function ErrorState({ onRetry, t }) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.emptyState}>
+      <View style={[styles.emptyIconTile, { backgroundColor: colors.surface }]}>
+        <Ionicons name="cloud-offline-outline" size={38} color="#E8611A" />
+      </View>
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>{t('error_title')}</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.textSub }]}>{t('error_subtitle')}</Text>
+      <TouchableOpacity style={styles.emptyBtn} onPress={onRetry} activeOpacity={0.85}>
+        <Ionicons name="refresh" size={18} color="#fff" />
+        <Text style={styles.emptyBtnText}>{t('retry')}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -263,33 +265,46 @@ export default function HomeScreen({ navigation }) {
   const [userRoutesLoaded, setUserRoutesLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  // Con el gesto de refrescar se mantiene la lista visible en vez del spinner
+  const refreshingRef = useRef(false);
+  refreshingRef.current = refreshing;
+  // Al cambiar rápido de categoría sólo se aplica la respuesta de la última
+  const fetchIdRef = useRef(0);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    const fetchId = ++fetchIdRef.current;
+    if (!refreshingRef.current) setLoading(true);
     setError(null);
     try {
       let data;
       if (activeCategory === 'routes') {
-        const res = await apiFetch(`${BASE_URL}/routes/presets`);
-        const presets = await res.json();
+        const presets = await fetchJson(`${BASE_URL}/routes/presets`);
         const detailed = await Promise.all(
-          presets.map((r) => apiFetch(`${BASE_URL}/routes/presets/${r.id}`).then((r2) => r2.json()))
+          presets.map((r) => fetchJson(`${BASE_URL}/routes/presets/${r.id}`))
         );
         data = await Promise.all(detailed.map(withGeometry));
+      } else if (activeCategory === 'events') {
+        const events = await fetchJson(`${BASE_URL}/events`);
+        data = Array.isArray(events) ? events.filter(isUpcomingEvent) : [];
       } else {
-        const url = activeCategory === 'events'
-          ? `${BASE_URL}/events`
-          : `${BASE_URL}/places/nearby?lat=${location.lat}&lng=${location.lng}&radius=50000&category=${activeCategory}`;
-        const res = await fetch(url);
-        const text = await res.text();
-        try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 120)); }
+        data = await fetchJson(
+          `${BASE_URL}/places/nearby?lat=${location.lat}&lng=${location.lng}&radius=50000&category=${activeCategory}`
+        );
       }
+      if (fetchId !== fetchIdRef.current) return;
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e.message);
+      if (fetchId !== fetchIdRef.current) return;
+      // El detalle técnico no le sirve al usuario: la pantalla muestra un
+      // mensaje genérico con opción de reintentar
+      setError(e);
       setItems([]);
     } finally {
-      setLoading(false);
+      if (fetchId === fetchIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [activeCategory, location]);
 
@@ -309,6 +324,16 @@ export default function HomeScreen({ navigation }) {
     setUserRoutesLoaded(true);
     setUserRoutes(await Promise.all(saved.map(withGeometry)));
   }, []);
+
+  const onRefresh = useCallback(() => {
+    refreshingRef.current = true;
+    setRefreshing(true);
+    if (activeCategory === 'routes' && routeSubTab === 'user') {
+      loadUserRoutes().finally(() => setRefreshing(false));
+    } else {
+      fetchItems();
+    }
+  }, [activeCategory, routeSubTab, fetchItems, loadUserRoutes]);
 
   // Cargar rutas del usuario cuando se activa la pestaña de rutas
   useEffect(() => {
@@ -395,7 +420,14 @@ export default function HomeScreen({ navigation }) {
             keyExtractor={(item) => String(item.id)}
             renderItem={({ item }) =>
               activeCategory === 'events'
-                ? <EventCard item={item} />
+                ? (
+                  <EventCard
+                    item={item}
+                    t={t}
+                    language={language}
+                    onPress={() => navigation.navigate('EventDetail', { event: item })}
+                  />
+                )
                 : activeCategory === 'routes'
                   ? <RouteCard
                       item={item}
@@ -408,14 +440,25 @@ export default function HomeScreen({ navigation }) {
             }
             contentContainerStyle={[styles.list, listData.length === 0 && styles.listEmpty]}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#E8611A']}
+                tintColor="#E8611A"
+                progressBackgroundColor={colors.card}
+              />
+            }
             ListEmptyComponent={
               isUserTab
                 ? (userRoutesLoaded ? <UserRoutesEmpty navigation={navigation} t={t} /> : null)
-                : (
-                  <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-                    {error ? `Error: ${error}` : t('no_results')}
-                  </Text>
-                )
+                : error
+                  ? <ErrorState onRetry={fetchItems} t={t} />
+                  : (
+                    <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+                      {activeCategory === 'events' ? t('no_events') : t('no_results')}
+                    </Text>
+                  )
             }
           />
         )

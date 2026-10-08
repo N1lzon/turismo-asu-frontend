@@ -78,10 +78,37 @@ export default {
   clear_data_title: 'Clear data',
   clear_data_msg: 'All saved routes will be deleted and language and theme will be reset. This action cannot be undone.',
   clear_data_confirm: 'Clear',
+  data_cleared: 'Your data was cleared.',
+  data_clear_error: 'Could not clear the data. Please try again.',
 
   // About
   about_description: 'Mobile tourism app for Asunción, Paraguay.',
   about_stack: 'React Native · Expo',
   about_devs: 'Developers',
   about_view_github: 'View on GitHub',
+
+  // Hours
+  open_24h: 'Open 24 hours',
+  hours_range: '{{h}}',
+
+  // Errors
+  error_title: 'We couldn\'t load the information',
+  error_subtitle: 'Check your internet connection and try again.',
+  retry: 'Retry',
+  open_external_error: 'Could not open the maps app.',
+
+  // Search
+  search_min_chars: 'Type at least 2 letters to search.',
+
+  // Theme
+  theme_system: 'System default',
+
+  // Map
+  view_details: 'View details',
+
+  // Events
+  today: 'Today',
+  tomorrow: 'Tomorrow',
+  no_events: 'No upcoming events.',
+  description_title: 'About',
 };

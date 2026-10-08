@@ -78,10 +78,17 @@ export function ThemeProvider({ children }) {
     setManualTheme(null); // vuelve a seguir el sistema
   }
 
+  // 'system' | 'light' | 'dark', para el selector de Opciones
+  const themeMode = manualTheme ?? 'system';
+
+  function setThemeMode(mode) {
+    return mode === 'system' ? resetTheme() : setTheme(mode === 'dark');
+  }
+
   const colors = isDark ? darkColors : lightColors;
 
   return (
-    <ThemeContext.Provider value={{ colors, isDark, setTheme, resetTheme }}>
+    <ThemeContext.Provider value={{ colors, isDark, setTheme, resetTheme, themeMode, setThemeMode }}>
       {children}
     </ThemeContext.Provider>
   );

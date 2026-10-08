@@ -11,7 +11,7 @@ App móvil de turismo para Asunción, Paraguay. Permite explorar lugares turíst
 - [OSRM](https://router.project-osrm.org) — cálculo de rutas reales (driving) entre puntos en el mapa
 - `@react-native-async-storage/async-storage` — rutas del usuario y preferencias guardadas localmente
 - `expo-localization` — detección del idioma del dispositivo
-- `expo-updates` — recarga de la app al resetear ajustes
+- `expo-system-ui` — tema claro/oscuro según el sistema en Android
 - EAS Build — generación del APK
 
 ## Estructura del proyecto

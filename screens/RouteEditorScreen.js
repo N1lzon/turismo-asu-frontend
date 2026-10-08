@@ -8,18 +8,13 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BASE_URL, apiFetch } from '../config';
+import { usePlaceSearch } from '../search';
+import { getPhoto } from '../place';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../theme';
 
 const ITEM_HEIGHT = 64;
 const USER_ROUTES_KEY = '@user_routes';
-
-function getPhoto(item) {
-  if (Array.isArray(item.photos) && item.photos.length > 0) return item.photos[0];
-  if (typeof item.photo === 'string') return item.photo;
-  return null;
-}
 
 function DeleteBackground() {
   return (
@@ -108,10 +103,10 @@ export default function RouteEditorScreen({ route, navigation }) {
   const existingRouteId   = route?.params?.existingRouteId   ?? null;
   const existingRouteName = route?.params?.existingRouteName ?? '';
 
-  const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+  const {
+    query, setQuery, results: searchResults, loading, searched, tooShort, clear: clearSearch,
+  } = usePlaceSearch();
   const [routePlaces, setRoutePlaces] = useState(route?.params?.initialPlaces ?? []);
-  const [loading, setLoading] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dropIdx, setDropIdx] = useState(null);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
@@ -169,26 +164,10 @@ export default function RouteEditorScreen({ route, navigation }) {
   const isSearching = query.trim().length > 0;
   const hasPlaces = routePlaces.length > 0;
 
-  const handleSearch = async (text) => {
-    setQuery(text);
-    if (!text.trim()) { setSearchResults([]); return; }
-    setLoading(true);
-    try {
-      const res = await apiFetch(`${BASE_URL}/places/search?q=${encodeURIComponent(text.trim())}`);
-      const data = await res.json();
-      setSearchResults(Array.isArray(data) ? data : []);
-    } catch {
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const addPlace = (place) => {
     if (routePlaces.some((p) => p.id === place.id)) return;
     setRoutePlaces((prev) => [...prev, place]);
-    setQuery('');
-    setSearchResults([]);
+    clearSearch();
     Keyboard.dismiss();
   };
 
@@ -212,24 +191,26 @@ export default function RouteEditorScreen({ route, navigation }) {
     try {
       const stored = await AsyncStorage.getItem(USER_ROUTES_KEY);
       const existing = stored ? JSON.parse(stored) : [];
-      const idx = existing.findIndex(
-        (r) => r.id === existingRouteId || (existingRouteName && r.name === existingRouteName)
-      );
+      const idx = existingRouteId != null ? existing.findIndex((r) => r.id === existingRouteId) : -1;
       const updated = idx !== -1
         ? existing.map((r, i) => (i === idx ? routeToSave : r))
         : [...existing, routeToSave];
       await AsyncStorage.setItem(USER_ROUTES_KEY, JSON.stringify(updated));
     } catch {}
     setSaveModalVisible(false);
-    navigation.goBack();
+    // El mapa (debajo en el stack) pasa a mostrar la versión recién guardada
+    navigation.navigate('Map', { routeData: { ...routeToSave, is_preset: false } });
   };
 
   // Muestra la ruta en el mapa sin guardarla
   const viewOnMap = () => {
     if (routePlaces.length === 0) return;
-    navigation.navigate('Map', {
-      routeData: { id: Date.now(), name: t('new_route'), places: routePlaces, is_preset: false },
-    });
+    // Si se está editando una ruta guardada se conserva su identidad, para que
+    // "Editar" desde el mapa siga apuntando a ella; si no, es un borrador
+    const routeData = existingRouteId != null
+      ? { id: existingRouteId, name: existingRouteName, places: routePlaces, is_preset: false }
+      : { id: Date.now(), name: t('new_route'), places: routePlaces, is_preset: false, is_draft: true };
+    navigation.navigate('Map', { routeData });
   };
 
   return (
@@ -240,7 +221,9 @@ export default function RouteEditorScreen({ route, navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.backIcon} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('new_route')}</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {existingRouteId != null ? t('edit_route') : t('new_route')}
+        </Text>
         <TouchableOpacity onPress={saveRoute} style={styles.headerBtnRight} disabled={!hasPlaces}>
           <Text numberOfLines={1} style={[styles.saveText, !hasPlaces && { opacity: 0.3 }]}>{t('save')}</Text>
         </TouchableOpacity>
@@ -254,12 +237,15 @@ export default function RouteEditorScreen({ route, navigation }) {
           placeholder={t('search_placeholder')}
           placeholderTextColor={colors.placeholder}
           value={query}
-          onChangeText={handleSearch}
+          onChangeText={setQuery}
           returnKeyType="search"
           autoCorrect={false}
         />
+        {loading && searchResults.length > 0 && (
+          <ActivityIndicator size="small" color="#E8611A" style={{ marginRight: 8 }} />
+        )}
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); setSearchResults([]); }}>
+          <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="close-circle" size={18} color={colors.textMuted} />
           </TouchableOpacity>
         )}
@@ -267,7 +253,7 @@ export default function RouteEditorScreen({ route, navigation }) {
 
       {/* Resultados de búsqueda */}
       {isSearching ? (
-        loading
+        loading && searchResults.length === 0
           ? <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#E8611A" />
           : (
             <FlatList
@@ -276,7 +262,11 @@ export default function RouteEditorScreen({ route, navigation }) {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ paddingBottom: 24 }}
               ListEmptyComponent={
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t('no_results_short')}</Text>
+                tooShort || searched ? (
+                  <Text style={[styles.emptyText, { color: colors.textMuted, marginTop: 40 }]}>
+                    {tooShort ? t('search_min_chars') : t('no_results_short')}
+                  </Text>
+                ) : null
               }
               renderItem={({ item }) => {
                 const photo = getPhoto(item);
